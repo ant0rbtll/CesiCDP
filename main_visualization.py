@@ -17,7 +17,7 @@ from cesipath.visualization import GraphVisualizer
 
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Visualisation interactive d'un graphe CESIPATH.")
-    parser.add_argument("--nodes", type=int, default=30, help="Nombre de sommets.")
+    parser.add_argument("--nodes", type=int, default=15, help="Nombre de sommets.")
     parser.add_argument("--seed", type=int, default=42, help="Seed de generation.")
     parser.add_argument("--sigma", type=float, default=0.18, help="Sigma de la dynamique gaussienne.")
     parser.add_argument(
