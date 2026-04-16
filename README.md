@@ -7,6 +7,10 @@ Base de projet pour CESIPATH, construite a partir du `livrable_modelisation_1.ip
 - un generateur d'instances de graphe VRP-CDR dans `src/cesipath/graph_generator.py`
 - une modelisation des aretes et des configurations dans `src/cesipath/models.py`
 - une couche de calcul des surcouts statiques et dynamiques dans `src/cesipath/dynamic_costs.py`
+- une fermeture metrique par Dijkstra dans `src/cesipath/metric_closure.py`
+- un simulateur de reseau dynamique dans `src/cesipath/dynamic_network.py`
+- des validateurs d'instance et d'etat dynamique dans `src/cesipath/validators.py`
+- un contrat d'entree pour les futurs solveurs dans `src/cesipath/solver_input.py`
 - une visualisation `matplotlib` dans `src/cesipath/visualization.py`
 - un notebook d'explication et d'execution pour chaque module metier dans `notebooks/`
 
@@ -24,8 +28,10 @@ from pathlib import Path
 
 sys.path.append(str(Path("src").resolve()))
 
+from cesipath.dynamic_network import DynamicNetworkSimulator
 from cesipath.graph_generator import GraphGenerator
 from cesipath.models import GraphGenerationConfig
+from cesipath.solver_input import build_dynamic_solver_input, build_static_solver_input
 from cesipath.visualization import GraphVisualizer
 
 generator = GraphGenerator(
@@ -37,15 +43,19 @@ generator = GraphGenerator(
 )
 instance = generator.generate()
 print(instance.summary())
-snapshot = generator.initialize_dynamic_snapshot(instance)
-snapshot = generator.advance_dynamic_snapshot(instance, snapshot)
+static_solver_input = build_static_solver_input(instance)
+
+simulator = DynamicNetworkSimulator(instance, seed=42)
+snapshot = simulator.initialize_snapshot()
+snapshot = simulator.advance(snapshot)
+dynamic_solver_input = build_dynamic_solver_input(instance, snapshot)
 print(snapshot.completed_costs[0])
 
 visualizer = GraphVisualizer(instance, generator)
 session = visualizer.show_dynamic_graph()
 ```
 
-Les notebooks `notebooks/models.ipynb`, `notebooks/dynamic_costs.ipynb`, `notebooks/graph_generator.ipynb` et `notebooks/visualization.ipynb` servent de support d'explication et de validation interactive.
+Les notebooks `notebooks/models.ipynb`, `notebooks/dynamic_costs.ipynb`, `notebooks/metric_closure.ipynb`, `notebooks/validators.ipynb`, `notebooks/graph_generator.ipynb`, `notebooks/dynamic_network.ipynb`, `notebooks/solver_input.ipynb`, `notebooks/visualization.ipynb`, `notebooks/main_visualization.ipynb` et `notebooks/package_exports.ipynb` servent de support d'explication et de validation interactive.
 
 Pour tester la visualisation interactive avec le bouton `->` hors notebook :
 

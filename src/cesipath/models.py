@@ -229,6 +229,7 @@ class GraphInstance:
     residual_costs: list[list[float]]
     residual_edges: dict[tuple[int, int], EdgeAttributes]
     completed_costs: list[list[float]]
+    completed_paths: dict[tuple[int, int], list[int]]
     demands: dict[int, int]
 
     @property
@@ -328,6 +329,7 @@ class DynamicGraphSnapshot:
     edge_availability: dict[tuple[int, int], bool]
     residual_costs: list[list[float]]
     completed_costs: list[list[float]]
+    completed_paths: dict[tuple[int, int], list[int]]
 
     def edge_cost(self, u: int, v: int) -> float:
         key = (min(u, v), max(u, v))

@@ -8,6 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.lines import Line2D
 from matplotlib.widgets import Button
 
+from .dynamic_network import DynamicNetworkSimulator
 from .graph_generator import GraphGenerator
 from .models import DynamicGraphSnapshot, EdgeStatus, GraphInstance
 
@@ -18,6 +19,7 @@ class GraphVisualizationSession:
 
     instance: GraphInstance
     generator: GraphGenerator
+    simulator: DynamicNetworkSimulator
     snapshot: DynamicGraphSnapshot
     fig: plt.Figure
     ax: plt.Axes
@@ -58,7 +60,8 @@ class GraphVisualizer:
     def show_dynamic_graph(self) -> GraphVisualizationSession:
         """Affiche le graphe dynamique avec un bouton pour avancer d'un tour."""
 
-        snapshot = self.generator.initialize_dynamic_snapshot(self.instance)
+        simulator = DynamicNetworkSimulator(self.instance, seed=self.generator.config.seed)
+        snapshot = simulator.initialize_snapshot()
         fig, ax = plt.subplots(figsize=(11, 8))
         plt.subplots_adjust(bottom=0.16)
         button_ax = fig.add_axes([0.82, 0.03, 0.12, 0.07])
@@ -67,6 +70,7 @@ class GraphVisualizer:
         session = GraphVisualizationSession(
             instance=self.instance,
             generator=self.generator,
+            simulator=simulator,
             snapshot=snapshot,
             fig=fig,
             ax=ax,
@@ -83,10 +87,7 @@ class GraphVisualizer:
     def advance_session(self, session: GraphVisualizationSession) -> None:
         """Fait avancer une session dynamique d'un tour."""
 
-        session.snapshot = self.generator.advance_dynamic_snapshot(
-            self.instance,
-            session.snapshot,
-        )
+        session.snapshot = session.simulator.advance(session.snapshot)
         self._draw_dynamic_graph(session)
         session.fig.canvas.draw_idle()
 
