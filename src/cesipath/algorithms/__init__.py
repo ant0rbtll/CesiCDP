@@ -8,6 +8,15 @@ from .benchmark import (
     save_benchmark_figures,
     summarize_benchmark,
 )
+from .dynamic_benchmark import (
+    plot_dynamic_cost_comparison,
+    plot_dynamic_gain,
+    plot_dynamic_planned_vs_realized,
+    run_dynamic_benchmark,
+    save_dynamic_benchmark_figures,
+    summarize_dynamic_benchmark,
+)
+from .dynamic_runner import DynamicExecution, execute_dynamic
 from .genetic import genetic_algorithm
 from .grasp import grasp, greedy_randomized_construction
 from .neighborhood import (
@@ -32,7 +41,9 @@ from .visualization import DEFAULT_IMAGE_DIR, plot_solution, save_solution_plot
 
 __all__ = [
     "DEFAULT_IMAGE_DIR",
+    "DynamicExecution",
     "VRPSolution",
+    "execute_dynamic",
     "genetic_algorithm",
     "grasp",
     "greedy_randomized_construction",
@@ -41,6 +52,9 @@ __all__ = [
     "plot_benchmark_gap",
     "plot_benchmark_quality",
     "plot_benchmark_runtime",
+    "plot_dynamic_cost_comparison",
+    "plot_dynamic_gain",
+    "plot_dynamic_planned_vs_realized",
     "plot_solution",
     "random_neighbor",
     "random_relocate_inter",
@@ -50,10 +64,13 @@ __all__ = [
     "route_cost",
     "route_load",
     "run_benchmark",
+    "run_dynamic_benchmark",
     "save_benchmark_figures",
+    "save_dynamic_benchmark_figures",
     "save_solution_plot",
     "simulated_annealing",
     "summarize_benchmark",
+    "summarize_dynamic_benchmark",
     "swap_inter",
     "tabu_search",
     "total_cost",
