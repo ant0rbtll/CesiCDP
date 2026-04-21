@@ -7,7 +7,8 @@ from collections import defaultdict
 from pathlib import Path
 from typing import Any, Callable
 
-import matplotlib.pyplot as plt
+from matplotlib.figure import Figure
+from matplotlib.patches import Patch
 
 from ..graph_generator import GraphGenerator
 from ..models import GraphGenerationConfig
@@ -26,6 +27,7 @@ def run_benchmark(
     algos: dict[str, AlgoFn],
     *,
     algo_kwargs: dict[str, dict[str, Any]] | None = None,
+    progress_callback: Callable[[dict[str, Any]], None] | None = None,
     verbose: bool = True,
 ) -> list[BenchmarkRow]:
     """Execute ``algos`` sur le produit cartesien ``sizes x seeds``.
@@ -37,6 +39,8 @@ def run_benchmark(
 
     algo_kwargs = algo_kwargs or {}
     results: list[BenchmarkRow] = []
+    total_per_algo = len(sizes) * len(seeds)
+    done_per_algo = {name: 0 for name in algos}
 
     for size in sizes:
         for seed in seeds:
@@ -63,6 +67,18 @@ def run_benchmark(
                         "routes": solution.route_count,
                     }
                 )
+                done_per_algo[name] += 1
+                if progress_callback is not None:
+                    progress_callback(
+                        {
+                            "algo": name,
+                            "done": done_per_algo[name],
+                            "total": total_per_algo,
+                            "size": size,
+                            "seed": seed,
+                            "runtime": elapsed,
+                        }
+                    )
 
     return results
 
@@ -91,14 +107,15 @@ def plot_benchmark_quality(
     results: list[BenchmarkRow],
     *,
     title: str = "Qualite des solutions (cout)",
-) -> plt.Figure:
+) -> Figure:
     """Boxplot du cout par taille, une couleur par algorithme."""
 
     sizes = _ordered_unique([r["size"] for r in results])
     algos = _ordered_unique([r["algo"] for r in results])
     palette = _algo_palette(algos)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig = Figure(figsize=(10, 6))
+    ax = fig.add_subplot(111)
     width = 0.8 / max(len(algos), 1)
 
     for a_idx, algo in enumerate(algos):
@@ -125,7 +142,7 @@ def plot_benchmark_quality(
     ax.set_title(title)
     ax.grid(True, axis="y", linestyle=":", alpha=0.4)
 
-    handles = [plt.Rectangle((0, 0), 1, 1, facecolor=palette[a], alpha=0.7) for a in algos]
+    handles = [Patch(facecolor=palette[a], alpha=0.7) for a in algos]
     ax.legend(handles, algos, loc="best", frameon=True)
     fig.tight_layout()
     return fig
@@ -135,7 +152,7 @@ def plot_benchmark_gap(
     results: list[BenchmarkRow],
     *,
     title: str = "Ecart relatif au meilleur (%)",
-) -> plt.Figure:
+) -> Figure:
     """Bar chart du gap moyen (%) par taille et algo, vs meilleur de l'instance."""
 
     sizes = _ordered_unique([r["size"] for r in results])
@@ -158,7 +175,8 @@ def plot_benchmark_gap(
             ]
             mean_gap[(size, algo)] = sum(gaps) / len(gaps) if gaps else 0.0
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig = Figure(figsize=(10, 6))
+    ax = fig.add_subplot(111)
     width = 0.8 / max(len(algos), 1)
 
     for a_idx, algo in enumerate(algos):
@@ -182,14 +200,15 @@ def plot_benchmark_runtime(
     *,
     title: str = "Temps d'execution moyen",
     log_scale: bool = True,
-) -> plt.Figure:
+) -> Figure:
     """Courbes du temps moyen (s) par taille, une ligne par algorithme."""
 
     sizes = _ordered_unique([r["size"] for r in results])
     algos = _ordered_unique([r["algo"] for r in results])
     palette = _algo_palette(algos)
 
-    fig, ax = plt.subplots(figsize=(10, 6))
+    fig = Figure(figsize=(10, 6))
+    ax = fig.add_subplot(111)
     for algo in algos:
         means = []
         for size in sizes:
@@ -238,7 +257,7 @@ def save_benchmark_figures(
         fig = builder(results)
         path = target / f"{prefix}_{suffix}_{index}.png"
         fig.savefig(path, dpi=dpi, bbox_inches="tight")
-        plt.close(fig)
+        fig.clear()
         paths[suffix] = path
 
     return paths

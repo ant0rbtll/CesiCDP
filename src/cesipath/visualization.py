@@ -3,14 +3,21 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
+import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
+from matplotlib.animation import FuncAnimation
 from matplotlib.lines import Line2D
+from matplotlib.offsetbox import AnnotationBbox, OffsetImage
 from matplotlib.widgets import Button
 
+from .algorithms.grasp import grasp
+from .algorithms.neighborhood import VRPSolution
 from .dynamic_network import DynamicNetworkSimulator
 from .graph_generator import GraphGenerator
 from .models import DynamicGraphSnapshot, EdgeStatus, GraphInstance
+from .solver_input import build_dynamic_solver_input
 
 
 @dataclass
@@ -24,6 +31,9 @@ class GraphVisualizationSession:
     fig: plt.Figure
     ax: plt.Axes
     button: Button
+    solution: VRPSolution | None = None
+    animation: FuncAnimation | None = None
+    truck_artist: AnnotationBbox | None = None
 
 
 class GraphVisualizer:
@@ -36,10 +46,16 @@ class GraphVisualizer:
     TEMP_DISABLED_EDGE_COLOR = "#f4a261"
     DEPOT_COLOR = "#264653"
     CLIENT_COLOR = "#8ecae6"
+    ROUTE_COLOR = "#ff7b00"
+    ROUTE_ALT_COLOR = "#2a9d8f"
+    TRUCK_ZOOM = 0.12
+    ANIMATION_INTERVAL_MS = 90
+    FRAMES_PER_EDGE = 16
 
     def __init__(self, instance: GraphInstance, generator: GraphGenerator) -> None:
         self.instance = instance
         self.generator = generator
+        self._truck_left, self._truck_right = self._load_truck_sprites()
 
     def show_base_graph(self) -> plt.Figure:
         """Affiche le graphe de base avec ses couts."""
@@ -153,6 +169,7 @@ class GraphVisualizer:
         )
 
     def _draw_dynamic_graph(self, session: GraphVisualizationSession) -> None:
+        self._stop_animation(session)
         ax = session.ax
         ax.clear()
 
@@ -204,20 +221,30 @@ class GraphVisualizer:
             if total_dynamic_edges
             else 0.0
         )
+
+        session.solution = self._compute_dynamic_solution(session)
+        if session.solution is not None:
+            self._draw_solution_overlay(ax, session.solution)
+
         title = (
             f"Graphe dynamique - tour {session.snapshot.step}\n"
             f"aretes actives={active_edge_count} | densite active={active_density:.3f} | ratio OFF={disabled_ratio:.3f}"
         )
+        if session.solution is not None:
+            title += f"\nGRASP: cout={session.solution.total_cost:.2f} | routes={session.solution.route_count}"
         self._apply_axes_style(ax, title)
-        self._draw_legend(
-            ax,
-            [
-                ("Route active", self.ACTIVE_EDGE_COLOR, "-"),
-                ("Route active surchargee", self.SURCHARGED_EDGE_COLOR, "-"),
-                ("Route interdite statique", self.FORBIDDEN_EDGE_COLOR, "--"),
-                ("Route indisponible dynamique", self.TEMP_DISABLED_EDGE_COLOR, "--"),
-            ],
-        )
+        legend_items = [
+            ("Route active", self.ACTIVE_EDGE_COLOR, "-"),
+            ("Route active surchargee", self.SURCHARGED_EDGE_COLOR, "-"),
+            ("Route interdite statique", self.FORBIDDEN_EDGE_COLOR, "--"),
+            ("Route indisponible dynamique", self.TEMP_DISABLED_EDGE_COLOR, "--"),
+        ]
+        if session.solution is not None:
+            legend_items.append(("Trajet GRASP", self.ROUTE_COLOR, "-"))
+        self._draw_legend(ax, legend_items)
+
+        if session.solution is not None:
+            self._start_truck_animation(session)
 
     def _draw_edge(
         self,
@@ -282,3 +309,109 @@ class GraphVisualizer:
             for label, color, linestyle in items
         ]
         ax.legend(handles=handles, loc="upper left", frameon=True)
+
+    def _compute_dynamic_solution(self, session: GraphVisualizationSession) -> VRPSolution | None:
+        """Calcule une solution dynamique via GRASP pour animer le camion."""
+
+        solver_input = build_dynamic_solver_input(self.instance, session.snapshot)
+        seed_base = self.generator.config.seed or 0
+        try:
+            return grasp(
+                solver_input,
+                max_iterations=40,
+                rcl_alpha=0.3,
+                use_local_search=False,
+                seed=seed_base + session.snapshot.step,
+            )
+        except Exception:
+            return None
+
+    def _draw_solution_overlay(self, ax: plt.Axes, solution: VRPSolution) -> None:
+        """Dessine les routes de solution pour contextualiser l'animation."""
+
+        for idx, route in enumerate(solution.routes):
+            if len(route) < 2:
+                continue
+            xs = [self.instance.coordinates[node][0] for node in route]
+            ys = [self.instance.coordinates[node][1] for node in route]
+            if idx == 0:
+                ax.plot(xs, ys, color=self.ROUTE_COLOR, linewidth=3.0, alpha=0.95, zorder=6)
+            else:
+                ax.plot(xs, ys, color=self.ROUTE_ALT_COLOR, linewidth=1.6, alpha=0.55, zorder=5)
+
+    def _primary_route_coords(self, solution: VRPSolution) -> list[tuple[float, float]]:
+        for route in solution.routes:
+            if len(route) >= 2:
+                return [self.instance.coordinates[node] for node in route]
+        return []
+
+    def _start_truck_animation(self, session: GraphVisualizationSession) -> None:
+        route_coords = self._primary_route_coords(session.solution) if session.solution else []
+        if len(route_coords) < 2:
+            return
+
+        frames: list[tuple[float, float, float]] = []
+        for (x1, y1), (x2, y2) in zip(route_coords, route_coords[1:]):
+            for step in range(self.FRAMES_PER_EDGE):
+                t = step / self.FRAMES_PER_EDGE
+                x = x1 + (x2 - x1) * t
+                y = y1 + (y2 - y1) * t
+                dx = x2 - x1
+                frames.append((x, y, dx))
+        last_x, last_y = route_coords[-1]
+        frames.append((last_x, last_y, 0.0))
+
+        initial_sprite = self._truck_right if self._truck_right is not None else self._truck_left
+        if initial_sprite is None:
+            return
+
+        image_box = OffsetImage(initial_sprite, zoom=self.TRUCK_ZOOM)
+        artist = AnnotationBbox(
+            image_box,
+            (frames[0][0], frames[0][1]),
+            frameon=False,
+            box_alignment=(0.5, 0.5),
+            zorder=9,
+        )
+        session.ax.add_artist(artist)
+        session.truck_artist = artist
+
+        def _update(frame_idx: int):
+            x, y, dx = frames[frame_idx]
+            artist.xy = (x, y)
+            if dx < 0 and self._truck_left is not None:
+                image_box.set_data(self._truck_left)
+            elif dx >= 0 and self._truck_right is not None:
+                image_box.set_data(self._truck_right)
+            return (artist,)
+
+        session.animation = FuncAnimation(
+            session.fig,
+            _update,
+            frames=len(frames),
+            interval=self.ANIMATION_INTERVAL_MS,
+            blit=False,
+            repeat=True,
+        )
+
+    @staticmethod
+    def _stop_animation(session: GraphVisualizationSession) -> None:
+        if session.animation is not None:
+            session.animation.event_source.stop()
+            session.animation = None
+        session.truck_artist = None
+
+    @staticmethod
+    def _load_sprite(path: Path):
+        if not path.exists():
+            return None
+        try:
+            return mpimg.imread(path)
+        except Exception:
+            return None
+
+    def _load_truck_sprites(self):
+        project_root = Path(__file__).resolve().parents[2]
+        left = self._load_sprite(project_root / "image" / "camionG.png")
+        right = self._load_sprite(project_root / "image" / "camionD.png")
+        return left, right

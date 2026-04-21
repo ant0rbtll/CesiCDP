@@ -12,6 +12,7 @@ Base de projet pour CESIPATH, construite a partir du `livrable_modelisation_1.ip
 - des validateurs d'instance et d'etat dynamique dans `src/cesipath/validators.py`
 - un contrat d'entree pour les futurs solveurs dans `src/cesipath/solver_input.py`
 - une visualisation `matplotlib` dans `src/cesipath/visualization.py`
+- une feature de reconnaissance de quartier OSM dans `src/cesipath/quartier_graph.py`
 - un notebook d'explication et d'execution pour chaque module metier dans `notebooks/`
 
 La dynamique actuelle suit une logique gaussienne avec retour vers la moyenne : a chaque changement de ville, les vraies aretes du graphe residuel sont mises a jour autour de leur cout precedent, mais une force de rappel les ramene progressivement vers leur cout statique. Le cout dynamique ne descend jamais sous le cout de base et ne depasse jamais un multiple configurable du cout statique. Une route reelle peut aussi devenir temporairement indisponible, puis redevenir disponible, a condition que le graphe dynamique reste connexe, suffisamment dense et sous un ratio maximal de routes `OFF`. Le graphe complet de resolution est ensuite recalcule avec Dijkstra pour conserver une fermeture metrique.
@@ -21,6 +22,19 @@ Le generateur filtre aussi les instances selon un profil automatique de densite 
 ## Demarrage rapide
 
 Depuis la racine du depot :
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+Si `pip` retourne `externally-managed-environment` (Python Homebrew),
+utiliser soit un venv, soit :
+
+```bash
+python3 -m pip install --user --break-system-packages -r requirements.txt
+```
+
+Puis :
 
 ```python
 import sys
@@ -57,11 +71,47 @@ session = visualizer.show_dynamic_graph()
 
 Les notebooks `notebooks/models.ipynb`, `notebooks/dynamic_costs.ipynb`, `notebooks/metric_closure.ipynb`, `notebooks/validators.ipynb`, `notebooks/graph_generator.ipynb`, `notebooks/dynamic_network.ipynb`, `notebooks/solver_input.ipynb`, `notebooks/visualization.ipynb`, `notebooks/main_visualization.ipynb` et `notebooks/package_exports.ipynb` servent de support d'explication et de validation interactive.
 
-Pour tester la visualisation interactive avec le bouton `->` hors notebook :
+Pour lancer l'interface graphique principale (modes `Benchmark CESIPATH`,
+`Generation + Visualizer` et `Reconnaissance quartier`) :
 
 ```bash
-python3 main_visualization.py
+python3 main_gui.py
 ```
+
+Le mode `Generation + Visualizer` remplace l'ancien lancement separé
+`main_visualization.py` et ouvre automatiquement la fenetre interactive
+du graphe apres generation.
+
+Le visualizer de generation affiche maintenant une animation de camion sur
+le trajet dynamique calcule par GRASP (camion `image/camionG.png` vers la gauche,
+`image/camionD.png` vers la droite).
+
+Le mode `Reconnaissance quartier` utilise directement le module interne
+`src/cesipath/quartier_graph.py` (plus de dependance a un dossier externe),
+affiche le visualizer directement dans l'onglet GUI (pas de popup, pas de PNG) et
+convertit le graphe OSM en non oriente.
+
+Optimisation de fluidite appliquee sur cet onglet :
+
+- rendu du graphe calcule en thread de fond (UI non bloquee)
+- fond de carte toujours actif, avec telechargement des tuiles optimise (parallelisation + cache)
+
+L'interface est maintenant structuree avec :
+
+- `src/gui/theme.py` : palette, styles et theming global
+- `src/gui/components.py` : composants reutilisables (champs labels, boutons, logs, tooltips)
+- `src/gui/icons.py` : generation d'icones d'onglets via Pillow (fallback texte si indisponible)
+- `src/gui/services.py` : logique metier decouplee de la couche Tkinter
+- `src/gui/STYLE_CONVENTIONS.md` : conventions UI/UX et regles de maintenance GUI
+
+Ameliorations UX appliquees :
+
+- systeme de couleur coherent (primaire/accent/succes/erreur)
+- disposition aeree avec sections visuelles
+- validation live des champs
+- logs colores avec indicateurs (`✓`, `✗`, `ℹ`, `⏳`)
+- barre de progression et etat running/idle sur chaque onglet
+- visualizer quartier imbrique dans la fenetre principale
 
 Par defaut, la dynamique utilise maintenant :
 
