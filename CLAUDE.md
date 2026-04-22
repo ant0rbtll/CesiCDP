@@ -39,7 +39,7 @@ Quatre algorithmes partagent un même jeu de primitives de voisinage. **Toujours
 - **`simulated_annealing.py`** — Metropolis + refroidissement géométrique, mouvements via `random_neighbor`, passe finale `local_search` (flag `final_local_search`) pour équité vs GRASP.
 - **`tabu_search.py`** — Balayage complet du voisinage relocate+swap, mémoire courte par attribut (client déplacé, paire échangée), aspiration, polissage final `local_search`.
 - **`genetic.py`** — Représentation **giant-tour** (permutation) décodée par **Split de Prins** (DP O(n²)). OX crossover, mutation swap/reverse, sélection tournoi, élitisme, option mémétique qui applique `local_search` à chaque enfant.
-- **`benchmark.py`** — Harnais : `run_benchmark(sizes, seeds, algos, algo_kwargs)` produit une liste de dicts. `plot_benchmark_quality`, `plot_benchmark_gap` (écart % au meilleur par instance), `plot_benchmark_runtime`. `save_benchmark_figures` sauvegarde les 3 PNG avec index auto-incrémenté partagé avec `save_solution_plot`.
+- **`benchmark.py`** — Harnais : `run_benchmark(sizes, seeds, algos, algo_kwargs)` produit une liste de dicts. `plot_benchmark_quality`, `plot_benchmark_gap` (écart % au meilleur par instance), `plot_benchmark_runtime`. `save_benchmark_figures` sauvegarde les 3 PNG (`benchmark_{quality,gap,runtime}_N.png`) avec index auto-incrémenté propre à ce préfixe (indépendant de `save_solution_plot` et `save_dynamic_benchmark_figures`).
 - **`visualization.py`** — `plot_solution` (routes colorées + graphe résiduel en fond) et `save_solution_plot` (fichiers `png_result_N.png` dans `DEFAULT_IMAGE_DIR = algorithms/image/`).
 
 ### Contraintes transverses
