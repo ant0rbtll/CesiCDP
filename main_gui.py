@@ -6,6 +6,7 @@ import os
 import sys
 import threading
 import traceback
+import warnings
 from pathlib import Path
 import tkinter as tk
 from tkinter import filedialog, messagebox, ttk
@@ -19,6 +20,23 @@ if "MPLCONFIGDIR" not in os.environ:
     mpl_dir = Path(os.getenv("TMPDIR", "/tmp")) / "cesipath-mplconfig"
     mpl_dir.mkdir(parents=True, exist_ok=True)
     os.environ["MPLCONFIGDIR"] = str(mpl_dir)
+
+# Bruit connu joblib/loky (contextily) a la fermeture du process.
+warnings.filterwarnings(
+    "ignore",
+    message=r"resource_tracker: There appear to be .* leaked semlock objects to clean up at shutdown",
+    category=UserWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"resource_tracker: There appear to be .* leaked folder objects to clean up at shutdown",
+    category=UserWarning,
+)
+warnings.filterwarnings(
+    "ignore",
+    message=r"resource_tracker: .*FileNotFoundError.*",
+    category=UserWarning,
+)
 
 import matplotlib
 
@@ -37,6 +55,7 @@ from gui.components import (
 from gui.icons import create_tab_icon
 from gui.services import (
     NETWORK_TYPES,
+    build_quartier_dynamic_session,
     generate_and_build_visualizer,
     parse_float,
     parse_int_list,
@@ -589,35 +608,56 @@ class QuartierTab(ttk.Frame):
         self.place_var = tk.StringVar(value="Place de la Concorde, Paris")
         self.network_display_var = tk.StringVar(value="Drive")
         self.distance_var = tk.StringVar(value="600")
+        self.max_clients_var = tk.StringVar(value="35")
         self.export_format_var = tk.StringVar(value="none")
         self.preview_var = tk.StringVar(value="Apercu: Place de la Concorde, Paris | type=drive")
 
         self.place_field: LabeledEntry | None = None
         self.distance_field: LabeledEntry | None = None
+        self.max_clients_field: LabeledEntry | None = None
         self.network_combo: LabeledCombobox | None = None
         self.run_button: ColoredButton | None = None
         self.indicator: RunningIndicator | None = None
         self.log_console: LogConsole | None = None
+        self._sessions: list = []
+        self._is_plot_fullscreen = False
 
         self._plot_container: ttk.Frame | None = None
         self._figure_canvas: FigureCanvasTkAgg | None = None
         self._current_figure = None
+        self._controls_frame: ttk.LabelFrame | None = None
+        self._log_frame: ttk.LabelFrame | None = None
+        self._plot_frame: ttk.LabelFrame | None = None
+        self._plot_mode_button: ColoredButton | None = None
+        self._has_dynamic_graph = False
 
         self._build_ui()
         self.place_var.trace_add("write", self._update_preview)
         self.network_display_var.trace_add("write", self._update_preview)
+        self.max_clients_var.trace_add("write", self._update_preview)
+        self._update_preview()
+        self._apply_plot_mode()
 
     def _build_ui(self) -> None:
-        self.columnconfigure(0, weight=1)
+        self.columnconfigure(0, weight=5)
+        self.columnconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
         self.rowconfigure(1, weight=1)
 
         controls = ttk.LabelFrame(self, text="Parametres reconnaissance quartier", style="Card.TLabelframe")
-        controls.grid(row=0, column=0, sticky="ew", padx=SPACING_LG, pady=(SPACING_LG, SPACING_MD))
+        controls.grid(
+            row=0,
+            column=0,
+            sticky="new",
+            padx=(SPACING_LG, SPACING_MD),
+            pady=(SPACING_LG, SPACING_MD),
+        )
+        self._controls_frame = controls
         controls.columnconfigure(0, weight=1)
         controls.columnconfigure(1, weight=1)
         ttk.Label(
             controls,
-            text="Chargez un reseau OSM local puis affichez-le directement dans le visualizer integre.",
+            text="Chargez un reseau OSM reel puis lancez la simulation dynamique CESIPATH sur ce quartier.",
             style="Hint.TLabel",
         ).grid(row=0, column=0, columnspan=2, sticky="w", pady=(0, SPACING_MD))
 
@@ -652,6 +692,16 @@ class QuartierTab(ttk.Frame):
         )
         self.distance_field.grid(row=2, column=0, sticky="ew", padx=(0, SPACING_LG), pady=(0, SPACING_MD))
 
+        self.max_clients_field = LabeledEntry(
+            controls,
+            label="Clients dynamiques",
+            variable=self.max_clients_var,
+            hint="Nombre de clients VRP",
+            tooltip="Nombre max de points de livraison utilises dans la resolution dynamique.",
+            validator=positive_int_validator("Clients dynamiques"),
+        )
+        self.max_clients_field.grid(row=2, column=1, sticky="ew", pady=(0, SPACING_MD))
+
         export_combo = LabeledCombobox(
             controls,
             label="Export optionnel",
@@ -660,20 +710,20 @@ class QuartierTab(ttk.Frame):
             tooltip="Exporter une copie du graphe non oriente.",
             width=28,
         )
-        export_combo.grid(row=2, column=1, sticky="ew", pady=(0, SPACING_MD))
+        export_combo.grid(row=3, column=0, sticky="ew", padx=(0, SPACING_LG), pady=(0, SPACING_MD))
 
         ttk.Label(controls, textvariable=self.preview_var, style="Hint.TLabel").grid(
-            row=3,
+            row=4,
             column=0,
             columnspan=2,
             sticky="w",
             pady=(0, SPACING_MD),
         )
 
-        ttk.Separator(controls, orient="horizontal").grid(row=4, column=0, columnspan=2, sticky="ew", pady=SPACING_MD)
+        ttk.Separator(controls, orient="horizontal").grid(row=5, column=0, columnspan=2, sticky="ew", pady=SPACING_MD)
 
         action_row = ttk.Frame(controls, style="Surface.TFrame")
-        action_row.grid(row=5, column=0, columnspan=2, sticky="ew")
+        action_row.grid(row=6, column=0, columnspan=2, sticky="ew")
         action_row.columnconfigure(0, weight=1)
 
         self.indicator = RunningIndicator(action_row)
@@ -682,54 +732,165 @@ class QuartierTab(ttk.Frame):
 
         self.run_button = ColoredButton(
             action_row,
-            text="Analyser quartier",
+            text="Analyser et simuler",
             command=self._run_quartier,
             role="primary",
             width=22,
         )
         self.run_button.grid(row=0, column=1, sticky="e")
 
-        split = ttk.Panedwindow(self, orient="horizontal")
-        split.grid(row=1, column=0, sticky="nsew", padx=SPACING_LG, pady=(0, SPACING_LG))
+        plot_frame = ttk.LabelFrame(self, text="Visualisation dynamique OSM (imbriquee)", style="Card.TLabelframe")
+        plot_frame.grid(
+            row=0,
+            column=1,
+            sticky="nsew",
+            padx=(0, SPACING_LG),
+            pady=(SPACING_LG, SPACING_MD),
+        )
+        self._plot_frame = plot_frame
+        plot_frame.columnconfigure(0, weight=1)
+        plot_frame.rowconfigure(1, weight=1)
 
-        log_frame = ttk.LabelFrame(split, text="Journal reconnaissance", style="Card.TLabelframe")
+        plot_header = ttk.Frame(plot_frame, style="Surface.TFrame")
+        plot_header.grid(row=0, column=0, sticky="ew", padx=SPACING_MD, pady=(SPACING_SM, SPACING_SM))
+        plot_header.columnconfigure(0, weight=1)
+        ttk.Label(plot_header, text="Mode d'affichage", style="Hint.TLabel").grid(row=0, column=0, sticky="w")
+
+        self._plot_mode_button = ColoredButton(
+            plot_header,
+            text="Plein ecran",
+            command=self._toggle_plot_mode,
+            role="secondary",
+            width=14,
+            size="sm",
+        )
+        self._plot_mode_button.grid(row=0, column=1, sticky="e")
+        self._set_plot_mode_button_ready(False)
+
+        plot_frame.columnconfigure(0, weight=1)
+
+        self._plot_container = ttk.Frame(plot_frame, style="Surface.TFrame")
+        self._plot_container.grid(row=1, column=0, sticky="nsew")
+        ttk.Label(
+            self._plot_container,
+            text="Aucune simulation affichee. Lancez l'analyse quartier pour afficher le visualizer dynamique ici.",
+            style="Hint.TLabel",
+        ).pack(anchor="w", padx=SPACING_MD, pady=SPACING_MD)
+
+        log_frame = ttk.LabelFrame(self, text="Journal reconnaissance", style="Card.TLabelframe")
+        log_frame.grid(
+            row=1,
+            column=0,
+            columnspan=2,
+            sticky="nsew",
+            padx=SPACING_LG,
+            pady=(0, SPACING_LG),
+        )
+        self._log_frame = log_frame
         log_frame.rowconfigure(0, weight=1)
         log_frame.columnconfigure(0, weight=1)
 
         self.log_console = LogConsole(log_frame, height=10)
         self.log_console.grid(row=0, column=0, sticky="nsew")
 
-        plot_frame = ttk.LabelFrame(split, text="Visualisation imbriquee (non orientee)", style="Card.TLabelframe")
-        plot_frame.rowconfigure(0, weight=1)
-        plot_frame.columnconfigure(0, weight=1)
+    def _toggle_plot_mode(self) -> None:
+        self._is_plot_fullscreen = not self._is_plot_fullscreen
+        self._apply_plot_mode()
 
-        self._plot_container = ttk.Frame(plot_frame, style="Surface.TFrame")
-        self._plot_container.grid(row=0, column=0, sticky="nsew")
-        ttk.Label(
-            self._plot_container,
-            text="Aucun graphe affiche. Lancez la reconnaissance pour afficher le visualizer ici.",
-            style="Hint.TLabel",
-        ).pack(anchor="w", padx=SPACING_MD, pady=SPACING_MD)
+    def _set_plot_mode_button_ready(self, ready: bool) -> None:
+        if self._plot_mode_button is None:
+            return
+        self._has_dynamic_graph = ready
+        if ready:
+            base = PALETTE["error"]
+            hover = PALETTE["error_hover"]
+            active = PALETTE["error_hover"]
+        else:
+            base = PALETTE["primary"]
+            hover = PALETTE["primary_light"]
+            active = PALETTE["primary_light"]
 
-        split.add(log_frame, weight=1)
-        split.add(plot_frame, weight=3)
+        self._plot_mode_button._base_color = base
+        self._plot_mode_button._hover_color = hover
+        self._plot_mode_button._active_color = active
+        self._plot_mode_button.configure(
+            bg=base,
+            activebackground=active,
+            fg=PALETTE["text_inverse"],
+            activeforeground=PALETTE["text_inverse"],
+        )
+
+    def _apply_plot_mode(self) -> None:
+        if (
+            self._controls_frame is None
+            or self._plot_frame is None
+            or self._log_frame is None
+            or self._plot_container is None
+        ):
+            return
+
+        if self._is_plot_fullscreen:
+            self.columnconfigure(0, weight=1)
+            self.columnconfigure(1, weight=1)
+            self.rowconfigure(0, weight=1)
+            self.rowconfigure(1, weight=0)
+
+            self._controls_frame.grid_remove()
+            self._log_frame.grid_remove()
+            self._plot_frame.grid_configure(
+                row=0,
+                column=0,
+                columnspan=2,
+                rowspan=2,
+                sticky="nsew",
+                padx=SPACING_LG,
+                pady=(SPACING_LG, SPACING_LG),
+            )
+            self._plot_frame.rowconfigure(1, weight=1)
+            self._plot_container.grid()
+            if self._plot_mode_button is not None:
+                self._plot_mode_button.configure(text="Mode mini")
+            return
+
+        self.columnconfigure(0, weight=5)
+        self.columnconfigure(1, weight=1)
+        self.rowconfigure(0, weight=1)
+        self.rowconfigure(1, weight=1)
+
+        self._controls_frame.grid()
+        self._log_frame.grid()
+        self._plot_frame.grid_configure(
+            row=0,
+            column=1,
+            columnspan=1,
+            rowspan=1,
+            sticky="nsew",
+            padx=(0, SPACING_LG),
+            pady=(SPACING_LG, SPACING_MD),
+        )
+        self._plot_frame.rowconfigure(1, weight=0)
+        self._plot_container.grid_remove()
+        if self._plot_mode_button is not None:
+            self._plot_mode_button.configure(text="Plein ecran")
 
     def _update_preview(self, *_: object) -> None:
         label = self.network_display_var.get()
         network_type = NETWORK_TYPES.get(label, "drive")
-        self.preview_var.set(f"Apercu: {self.place_var.get().strip() or '-'} | type={network_type}")
+        self.preview_var.set(
+            f"Apercu: {self.place_var.get().strip() or '-'} | type={network_type} | clients={self.max_clients_var.get().strip() or '?'}"
+        )
 
     def _set_running(self, running: bool, *, success: bool = True, message: str = "") -> None:
         if self.run_button is not None:
-            self.run_button.set_running(running, running_text="⏳ Chargement OSM...")
+            self.run_button.set_running(running, running_text="⏳ Chargement OSM + simulation...")
         if self.indicator is not None:
             if running:
-                self.indicator.start("Chargement OSM + rendu")
+                self.indicator.start("Chargement OSM + dynamique")
             else:
                 self.indicator.stop(message or "Termine", success=success)
 
     def _validate_fields(self) -> tuple[bool, str]:
-        fields = [self.place_field, self.distance_field]
+        fields = [self.place_field, self.distance_field, self.max_clients_field]
         for field in fields:
             if field is None:
                 continue
@@ -747,6 +908,7 @@ class QuartierTab(ttk.Frame):
         job = {
             "place": self.place_var.get().strip(),
             "distance_raw": self.distance_var.get(),
+            "max_clients_raw": self.max_clients_var.get(),
             "network_display": self.network_display_var.get(),
             "export_format": self.export_format_var.get(),
         }
@@ -755,7 +917,7 @@ class QuartierTab(ttk.Frame):
         if self.log_console is not None:
             self.log_console.clear()
             self.log_console.log("running", "Recuperation du reseau OSM...")
-            self.log_console.log("info", "Rendu avec fond de carte")
+            self.log_console.log("info", "Preparation simulation dynamique (GRASP + couts dynamiques + OFF/ON)")
 
         thread = threading.Thread(target=self._quartier_worker, args=(job,), daemon=True)
         thread.start()
@@ -764,6 +926,7 @@ class QuartierTab(ttk.Frame):
         try:
             place = str(job["place"])
             distance = parse_positive_int(str(job["distance_raw"]), field_name="Distance")
+            max_solver_clients = parse_positive_int(str(job["max_clients_raw"]), field_name="Clients dynamiques")
             network_type = NETWORK_TYPES.get(str(job["network_display"]), "drive")
             export_format = str(job["export_format"])
 
@@ -773,27 +936,50 @@ class QuartierTab(ttk.Frame):
                 network_type=network_type,
                 distance=distance,
                 export_format=export_format,
+                max_solver_clients=max_solver_clients,
             )
-            figure = result.quartier_graph.build_figure(
-                size=(9.5, 6.5),
-                show_arrows_oneway=False,
-            )
-            self.after(0, self._on_quartier_success, result, figure)
+            self.after(0, self._on_quartier_success, result)
         except Exception as exc:
             details = traceback.format_exc(limit=10)
             self.after(0, self._on_quartier_failure, str(exc), details)
 
-    def _on_quartier_success(self, result, figure) -> None:
-        self._set_running(False, success=True, message="Reconnaissance terminee")
+    def _on_quartier_success(self, result) -> None:
+        try:
+            session = build_quartier_dynamic_session(result)
+            self._sessions.append(session)
+            figure = session.fig
+        except Exception as exc:
+            details = traceback.format_exc(limit=10)
+            self._on_quartier_failure(str(exc), details)
+            return
+
+        self._set_running(False, success=True, message="Simulation quartier active")
 
         if self.log_console is not None:
-            self.log_console.log("success", "Graphe non oriente charge et affiche (sans fleches)")
+            self.log_console.log("success", "Quartier charge: simulation dynamique active sur fond OSM")
             if result.export_path is not None:
                 self.log_console.log("info", f"Export: {result.export_path}")
             for key, value in result.stats.items():
                 self.log_console.log("info", f"{key}: {value}")
+            self.log_console.log("info", "Meta conversion quartier -> CESIPATH:")
+            for key, value in result.dynamic_metadata.items():
+                self.log_console.log("plain", f"  - {key}: {value}")
+            self.log_console.log("info", "Resume instance dynamique:")
+            for key in (
+                "node_count",
+                "residual_edge_count",
+                "residual_density",
+                "dynamic_forbid_probability",
+                "dynamic_restore_probability",
+                "dynamic_min_density",
+                "dynamic_max_disabled_ratio",
+                "minimum_route_count",
+            ):
+                if key in result.dynamic_instance_summary:
+                    self.log_console.log("plain", f"  - {key}: {result.dynamic_instance_summary[key]}")
 
         self._render_figure(figure)
+        self._set_plot_mode_button_ready(True)
 
     def _render_figure(self, figure) -> None:
         if self._plot_container is None:
@@ -815,6 +1001,8 @@ class QuartierTab(ttk.Frame):
         if self.log_console is not None:
             self.log_console.log("error", error_message)
             self.log_console.log("plain", details)
+        if self._current_figure is None:
+            self._set_plot_mode_button_ready(False)
         messagebox.showerror("Reconnaissance quartier", error_message)
 
 

@@ -16,7 +16,7 @@ from cesipath.algorithms import (
     tabu_search,
 )
 from cesipath.graph_generator import GraphGenerator
-from cesipath.models import GraphGenerationConfig
+from cesipath.models import GraphGenerationConfig, GraphInstance
 from cesipath.visualization import GraphVisualizationSession, GraphVisualizer
 
 ALGO_FUNCTIONS = {
@@ -130,6 +130,24 @@ class QuartierServiceResult:
     quartier_graph: Any
     stats: dict[str, Any]
     export_path: str | None
+    dynamic_instance_summary: dict[str, Any]
+    dynamic_metadata: dict[str, Any]
+    dynamic_instance: GraphInstance
+
+
+def build_quartier_dynamic_session(result: QuartierServiceResult) -> GraphVisualizationSession:
+    generator = GraphGenerator(result.dynamic_instance.config)
+    show_edge_labels = True
+    show_node_labels = result.dynamic_instance.node_count <= 80
+    visualizer = GraphVisualizer(
+        result.dynamic_instance,
+        generator,
+        background_renderer=result.quartier_graph.draw_basemap,
+        show_edge_labels=show_edge_labels,
+        show_node_labels=show_node_labels,
+        show_grid=False,
+    )
+    return visualizer.show_dynamic_graph(size=(14.5, 9.5))
 
 
 def run_quartier_service(
@@ -139,13 +157,22 @@ def run_quartier_service(
     network_type: str,
     distance: int,
     export_format: str,
+    max_solver_clients: int = 35,
 ) -> QuartierServiceResult:
     qg = quartier_graph_cls(place, network_type=network_type)
     qg.charger_quartier(distance=distance)
     stats = qg.obtenir_stats()
+    dynamic_instance, dynamic_metadata = qg.build_dynamic_instance(max_solver_clients=max_solver_clients)
 
     export_path = None
     if export_format != "none":
         export_path = qg.exporter_graphe(format=export_format)
 
-    return QuartierServiceResult(quartier_graph=qg, stats=stats, export_path=export_path)
+    return QuartierServiceResult(
+        quartier_graph=qg,
+        stats=stats,
+        export_path=export_path,
+        dynamic_instance_summary=dynamic_instance.summary(),
+        dynamic_metadata=dynamic_metadata,
+        dynamic_instance=dynamic_instance,
+    )

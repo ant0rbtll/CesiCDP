@@ -88,13 +88,21 @@ le trajet dynamique calcule par GRASP (camion `image/camionG.png` vers la gauche
 
 Le mode `Reconnaissance quartier` utilise directement le module interne
 `src/cesipath/quartier_graph.py` (plus de dependance a un dossier externe),
-affiche le visualizer directement dans l'onglet GUI (pas de popup, pas de PNG) et
-convertit le graphe OSM en non oriente.
+affiche le visualizer directement dans l'onglet GUI (pas de popup, pas de PNG),
+convertit le graphe OSM en non oriente puis le projette dans le moteur dynamique
+CESIPATH (`GraphInstance`): simulation des couts dynamiques, aretes OFF/ON,
+recalcul de fermeture metrique et resolution GRASP animee sur fond de carte OSM.
+
+Le graphe OSM complet est conserve pour la topologie (sommets + aretes), tandis que
+les clients VRP sont echantillonnes via le parametre GUI `Clients dynamiques`
+afin de garder une preuve de concept fluide et representative en quartier reel.
 
 Optimisation de fluidite appliquee sur cet onglet :
 
 - rendu du graphe calcule en thread de fond (UI non bloquee)
 - fond de carte toujours actif, avec telechargement des tuiles optimise (parallelisation + cache)
+- cache local du basemap entre snapshots pour eviter un re-telechargement a chaque step
+- creation du visualizer dynamique dans le thread principal (evite les warnings matplotlib thread)
 
 L'interface est maintenant structuree avec :
 
