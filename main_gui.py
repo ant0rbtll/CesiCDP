@@ -64,7 +64,7 @@ from gui.services import (
     run_benchmark_service,
     run_quartier_service,
 )
-from gui.theme import PALETTE, SPACING_LG, SPACING_MD, SPACING_SM, apply_theme
+from gui.theme import PALETTE, SPACING_LG, SPACING_MD, SPACING_SM, SPACING_XS, apply_theme
 
 
 def get_quartier_graph_class():
@@ -630,6 +630,12 @@ class QuartierTab(ttk.Frame):
         self._plot_frame: ttk.LabelFrame | None = None
         self._plot_mode_button: ColoredButton | None = None
         self._has_dynamic_graph = False
+        self.speed_var = tk.StringVar(value="1x")
+        self._speed_combo: LabeledCombobox | None = None
+        self.plot_title_var = tk.StringVar(value="")
+        self.plot_info_var = tk.StringVar(value="Chargez un quartier pour demarrer la simulation.")
+        self._legend_frame: ttk.Frame | None = None
+        self._play_button: ColoredButton | None = None
 
         self._build_ui()
         self.place_var.trace_add("write", self._update_preview)
@@ -639,9 +645,9 @@ class QuartierTab(ttk.Frame):
         self._apply_plot_mode()
 
     def _build_ui(self) -> None:
-        self.columnconfigure(0, weight=5)
-        self.columnconfigure(1, weight=1)
-        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=2)
+        self.columnconfigure(1, weight=5)
+        self.rowconfigure(0, weight=3)
         self.rowconfigure(1, weight=1)
 
         controls = ttk.LabelFrame(self, text="Parametres reconnaissance quartier", style="Card.TLabelframe")
@@ -749,12 +755,33 @@ class QuartierTab(ttk.Frame):
         )
         self._plot_frame = plot_frame
         plot_frame.columnconfigure(0, weight=1)
-        plot_frame.rowconfigure(1, weight=1)
+        # Row 2 (canvas) prend toute la hauteur disponible.
+        plot_frame.rowconfigure(2, weight=1)
 
         plot_header = ttk.Frame(plot_frame, style="Surface.TFrame")
-        plot_header.grid(row=0, column=0, sticky="ew", padx=SPACING_MD, pady=(SPACING_SM, SPACING_SM))
+        plot_header.grid(row=0, column=0, sticky="ew", padx=SPACING_MD, pady=(SPACING_SM, SPACING_XS))
         plot_header.columnconfigure(0, weight=1)
-        ttk.Label(plot_header, text="Mode d'affichage", style="Hint.TLabel").grid(row=0, column=0, sticky="w")
+
+        self._speed_combo = LabeledCombobox(
+            plot_header,
+            label="Vitesse camion",
+            variable=self.speed_var,
+            values=["0.5x", "1x", "2x", "4x", "8x"],
+            tooltip="Accelere ou ralentit l'animation du camion.",
+            width=8,
+        )
+        self._speed_combo.grid(row=0, column=0, sticky="w")
+        self.speed_var.trace_add("write", self._on_speed_change)
+
+        self._play_button = ColoredButton(
+            plot_header,
+            text="▶ Demarrer",
+            command=self._toggle_play,
+            role="success",
+            width=14,
+            size="sm",
+        )
+        self._play_button.grid(row=0, column=1, sticky="e", padx=(0, SPACING_SM))
 
         self._plot_mode_button = ColoredButton(
             plot_header,
@@ -764,18 +791,45 @@ class QuartierTab(ttk.Frame):
             width=14,
             size="sm",
         )
-        self._plot_mode_button.grid(row=0, column=1, sticky="e")
+        self._plot_mode_button.grid(row=0, column=2, sticky="e")
         self._set_plot_mode_button_ready(False)
 
-        plot_frame.columnconfigure(0, weight=1)
+        # Ligne titre (centree, au-dessus du canvas).
+        title_label = ttk.Label(
+            plot_frame,
+            textvariable=self.plot_title_var,
+            style="BodyBold.TLabel",
+            justify="center",
+            anchor="center",
+        )
+        title_label.grid(row=1, column=0, sticky="ew", padx=SPACING_MD, pady=(0, SPACING_XS))
 
+        # Canvas matplotlib: prend tout l'espace vertical restant.
         self._plot_container = ttk.Frame(plot_frame, style="Surface.TFrame")
-        self._plot_container.grid(row=1, column=0, sticky="nsew")
+        self._plot_container.grid(row=2, column=0, sticky="nsew", padx=SPACING_SM, pady=0)
         ttk.Label(
             self._plot_container,
             text="Aucune simulation affichee. Lancez l'analyse quartier pour afficher le visualizer dynamique ici.",
             style="Hint.TLabel",
-        ).pack(anchor="w", padx=SPACING_MD, pady=SPACING_MD)
+        ).pack(anchor="center", padx=SPACING_MD, pady=SPACING_LG)
+
+        # Bande inferieure: info camion (gauche) + legende horizontale (droite).
+        bottom_bar = ttk.Frame(plot_frame, style="Surface.TFrame")
+        bottom_bar.grid(row=3, column=0, sticky="ew", padx=SPACING_MD, pady=(SPACING_XS, SPACING_SM))
+        bottom_bar.columnconfigure(0, weight=1)
+        bottom_bar.columnconfigure(1, weight=2)
+
+        info_label = ttk.Label(
+            bottom_bar,
+            textvariable=self.plot_info_var,
+            style="Body.TLabel",
+            justify="left",
+            anchor="w",
+        )
+        info_label.grid(row=0, column=0, sticky="w")
+
+        self._legend_frame = ttk.Frame(bottom_bar, style="Surface.TFrame")
+        self._legend_frame.grid(row=0, column=1, sticky="e")
 
         log_frame = ttk.LabelFrame(self, text="Journal reconnaissance", style="Card.TLabelframe")
         log_frame.grid(
@@ -852,9 +906,9 @@ class QuartierTab(ttk.Frame):
                 self._plot_mode_button.configure(text="Mode mini")
             return
 
-        self.columnconfigure(0, weight=5)
-        self.columnconfigure(1, weight=1)
-        self.rowconfigure(0, weight=1)
+        self.columnconfigure(0, weight=2)
+        self.columnconfigure(1, weight=5)
+        self.rowconfigure(0, weight=3)
         self.rowconfigure(1, weight=1)
 
         self._controls_frame.grid()
@@ -872,6 +926,54 @@ class QuartierTab(ttk.Frame):
         self._plot_container.grid_remove()
         if self._plot_mode_button is not None:
             self._plot_mode_button.configure(text="Plein ecran")
+
+    _SPEED_MULTIPLIERS = {"0.5x": 0.5, "1x": 1.0, "2x": 2.0, "4x": 4.0, "8x": 8.0}
+
+    def _current_speed_multiplier(self) -> float:
+        return self._SPEED_MULTIPLIERS.get(self.speed_var.get(), 1.0)
+
+    def _on_speed_change(self, *_: object) -> None:
+        multiplier = self._current_speed_multiplier()
+        if not self._sessions:
+            return
+        session = self._sessions[-1]
+        session.set_speed(multiplier)
+
+    def _toggle_play(self) -> None:
+        if not self._sessions:
+            return
+        self._sessions[-1].toggle()
+
+    def _on_title_update(self, title: str) -> None:
+        self.plot_title_var.set(title)
+
+    def _on_info_update(self, info: str) -> None:
+        self.plot_info_var.set(info)
+
+    def _on_state_change(self, state: str) -> None:
+        if self._play_button is None:
+            return
+        if state == "playing":
+            self._play_button.configure(text="⏸ Pause")
+        else:
+            self._play_button.configure(text="▶ Demarrer")
+
+    def _on_legend_update(self, items: list[tuple[str, str, str]]) -> None:
+        frame = self._legend_frame
+        if frame is None:
+            return
+        for child in frame.winfo_children():
+            child.destroy()
+        for idx, (label, color, _linestyle) in enumerate(items):
+            swatch = tk.Frame(frame, width=14, height=14, bg=color, bd=0, highlightthickness=0)
+            swatch.grid(row=0, column=idx * 2, padx=(SPACING_SM, 0), pady=0)
+            swatch.grid_propagate(False)
+            ttk.Label(frame, text=label, style="Hint.TLabel").grid(
+                row=0,
+                column=idx * 2 + 1,
+                padx=(SPACING_XS, 0),
+                sticky="w",
+            )
 
     def _update_preview(self, *_: object) -> None:
         label = self.network_display_var.get()
@@ -945,7 +1047,16 @@ class QuartierTab(ttk.Frame):
 
     def _on_quartier_success(self, result) -> None:
         try:
-            session = build_quartier_dynamic_session(result)
+            self._on_state_change("paused")
+            self.plot_info_var.set("Appuyez sur Demarrer pour lancer la simulation.")
+            session = build_quartier_dynamic_session(
+                result,
+                title_callback=self._on_title_update,
+                info_callback=self._on_info_update,
+                legend_callback=self._on_legend_update,
+                state_callback=self._on_state_change,
+            )
+            session.set_speed(self._current_speed_multiplier())
             self._sessions.append(session)
             figure = session.fig
         except Exception as exc:

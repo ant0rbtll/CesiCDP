@@ -32,13 +32,56 @@ class GraphVisualizationSession:
     snapshot: DynamicGraphSnapshot
     fig: plt.Figure
     ax: plt.Axes
-    button: Button
+    button: Button | None = None
     solution: VRPSolution | None = None
     animation: FuncAnimation | None = None
     truck_artist: AnnotationBbox | None = None
     dynamic_edge_artists: dict[tuple[int, int], tuple[Line2D, Text | None]] | None = None
     animation_paused: bool = True
     initial_pause_hook_id: int | None = None
+    speed_multiplier: float = 1.0
+    external_controls: bool = False
+    title_callback: Callable[[str], None] | None = None
+    info_callback: Callable[[str], None] | None = None
+    legend_callback: Callable[[list[tuple[str, str, str]]], None] | None = None
+    state_callback: Callable[[str], None] | None = None
+    visualizer: "GraphVisualizer | None" = None
+
+    def set_speed(self, multiplier: float) -> None:
+        """Ajuste la vitesse de lecture du camion (1.0 = cadence par defaut)."""
+
+        if multiplier <= 0:
+            return
+        self.speed_multiplier = multiplier
+        if self.animation is None:
+            return
+        event_source = self.animation.event_source
+        if event_source is None:
+            return
+        base = GraphVisualizer.ANIMATION_INTERVAL_MS
+        event_source.interval = max(1, int(round(base / multiplier)))
+
+    def toggle(self) -> None:
+        """Bascule lecture/pause de l'animation (API externe)."""
+
+        if self.visualizer is not None:
+            self.visualizer.toggle_animation(self)
+
+    def play(self) -> None:
+        """Force la lecture de l'animation."""
+
+        if self.animation is None or self.animation.event_source is None:
+            return
+        if self.animation_paused:
+            self.toggle()
+
+    def pause(self) -> None:
+        """Force la pause de l'animation."""
+
+        if self.animation is None or self.animation.event_source is None:
+            return
+        if not self.animation_paused:
+            self.toggle()
 
 
 class GraphVisualizer:
@@ -97,15 +140,34 @@ class GraphVisualizer:
         fig.tight_layout()
         return fig
 
-    def show_dynamic_graph(self, *, size: tuple[float, float] = (11, 8)) -> GraphVisualizationSession:
-        """Affiche le graphe dynamique avec un bouton Start/Pause."""
+    def show_dynamic_graph(
+        self,
+        *,
+        size: tuple[float, float] = (11, 8),
+        external_controls: bool = False,
+        title_callback: Callable[[str], None] | None = None,
+        info_callback: Callable[[str], None] | None = None,
+        legend_callback: Callable[[list[tuple[str, str, str]]], None] | None = None,
+        state_callback: Callable[[str], None] | None = None,
+    ) -> GraphVisualizationSession:
+        """Affiche le graphe dynamique.
+
+        Si external_controls=True, aucun bouton Start/Pause n'est cree dans la
+        figure (titre, info et legende sont aussi routes via callbacks pour que
+        l'hote tk dispose de tout l'espace du canvas pour la carte).
+        """
 
         simulator = DynamicNetworkSimulator(self.instance, seed=self.generator.config.seed)
         snapshot = simulator.initialize_snapshot()
         fig, ax = plt.subplots(figsize=size)
-        plt.subplots_adjust(bottom=0.16)
-        button_ax = fig.add_axes([0.82, 0.03, 0.12, 0.07])
-        button = Button(button_ax, "Start")
+
+        button: Button | None = None
+        if external_controls:
+            fig.subplots_adjust(left=0.02, right=0.995, top=0.995, bottom=0.02)
+        else:
+            plt.subplots_adjust(bottom=0.16)
+            button_ax = fig.add_axes([0.82, 0.03, 0.12, 0.07])
+            button = Button(button_ax, "Start")
 
         session = GraphVisualizationSession(
             instance=self.instance,
@@ -115,19 +177,38 @@ class GraphVisualizer:
             fig=fig,
             ax=ax,
             button=button,
+            external_controls=external_controls,
+            visualizer=self,
+            title_callback=title_callback,
+            info_callback=info_callback,
+            legend_callback=legend_callback,
+            state_callback=state_callback,
         )
         self._draw_dynamic_graph(session)
 
-        def toggle(_: object) -> None:
-            self.toggle_animation(session)
+        if button is not None:
+            def toggle(_: object) -> None:
+                self.toggle_animation(session)
 
-        button.on_clicked(toggle)
+            button.on_clicked(toggle)
         return session
 
     @staticmethod
-    def _set_button_label(button: Button, label: str) -> None:
+    def _set_button_label(button: Button | None, label: str) -> None:
+        if button is None:
+            return
         button.label.set_text(label)
         button.ax.figure.canvas.draw_idle()
+
+    @staticmethod
+    def _emit_state(session: GraphVisualizationSession, state: str) -> None:
+        """Pousse l'etat play/pause vers l'exterieur si un callback est cable."""
+
+        if session.state_callback is not None:
+            try:
+                session.state_callback(state)
+            except Exception:
+                pass
 
     def toggle_animation(self, session: GraphVisualizationSession) -> None:
         """Bascule l'animation dynamique entre lecture et pause."""
@@ -144,10 +225,12 @@ class GraphVisualizer:
             event_source.start()
             session.animation_paused = False
             self._set_button_label(session.button, "Pause")
+            self._emit_state(session, "playing")
         else:
             event_source.stop()
             session.animation_paused = True
             self._set_button_label(session.button, "Start")
+            self._emit_state(session, "paused")
 
     def advance_session(self, session: GraphVisualizationSession) -> None:
         """Fait avancer une session dynamique d'un tour."""
@@ -242,7 +325,8 @@ class GraphVisualizer:
         if session.solution is not None:
             self._draw_solution_overlay(ax, session.solution)
 
-        self._apply_axes_style(ax, self._dynamic_title(session.snapshot, session.solution))
+        title = self._dynamic_title(session.snapshot, session.solution)
+        self._apply_axes_style(ax, title, session=session)
         legend_items = [
             ("Cout proche base", self.COST_LOW_COLOR, "-"),
             ("Cout intermediaire", self.COST_MID_COLOR, "-"),
@@ -252,8 +336,14 @@ class GraphVisualizer:
             ("Route indisponible dynamique", self.TEMP_DISABLED_EDGE_COLOR, "--"),
         ]
         if session.solution is not None:
-            legend_items.append(("Trajet GRASP", self.ROUTE_COLOR, "-"))
-        self._draw_legend(ax, legend_items)
+            legend_items.append(("Trajet du camion", self.ROUTE_COLOR, "-"))
+        if session.legend_callback is not None:
+            try:
+                session.legend_callback(legend_items)
+            except Exception:
+                pass
+        else:
+            self._draw_legend(ax, legend_items)
 
         if session.solution is not None:
             self._start_truck_animation(session)
@@ -317,27 +407,32 @@ class GraphVisualizer:
         rb = int(round(ab + (bb - ab) * factor))
         return f"#{rr:02x}{rg:02x}{rb:02x}"
 
-    def _dynamic_stats(self, snapshot: DynamicGraphSnapshot) -> tuple[int, float, float]:
-        active_edge_count = snapshot.active_edge_count
-        total_dynamic_edges = len(snapshot.edge_availability)
-        max_edges = self.instance.node_count * (self.instance.node_count - 1) / 2
-        active_density = active_edge_count / max_edges if max_edges else 0.0
-        disabled_ratio = (
-            (total_dynamic_edges - active_edge_count) / total_dynamic_edges
-            if total_dynamic_edges
-            else 0.0
-        )
-        return active_edge_count, active_density, disabled_ratio
-
     def _dynamic_title(self, snapshot: DynamicGraphSnapshot, solution: VRPSolution | None) -> str:
-        active_edge_count, active_density, disabled_ratio = self._dynamic_stats(snapshot)
-        title = (
-            f"Graphe dynamique - tour {snapshot.step}\n"
-            f"aretes actives={active_edge_count} | densite active={active_density:.3f} | ratio OFF={disabled_ratio:.3f}"
+        static_blocked = sum(
+            1
+            for edge in self.instance.residual_edges.values()
+            if edge.status == EdgeStatus.FORBIDDEN
         )
+        dynamic_blocked = len(snapshot.edge_availability) - snapshot.active_edge_count
+        total_blocked = static_blocked + dynamic_blocked
+
+        lines = [f"Simulation livraison   •   Tour n°{snapshot.step}"]
         if solution is not None:
-            title += f"\nGRASP: cout={solution.total_cost:.2f} | routes={solution.route_count}"
-        return title
+            total_clients = sum(
+                max(0, len(route) - 2)
+                for route in solution.routes
+                if len(route) >= 2
+            )
+            lines.append(
+                f"{solution.route_count} camion(s)   |   "
+                f"{total_clients} ville(s) a livrer   |   "
+                f"Distance planifiee : {solution.total_cost:.0f}"
+            )
+        lines.append(
+            f"Routes bloquees : {total_blocked}   "
+            f"(fixes : {static_blocked}   •   imprevus : {dynamic_blocked})"
+        )
+        return "\n".join(lines)
 
     def _draw_background(self, ax: plt.Axes) -> None:
         if self._background_renderer is None:
@@ -365,7 +460,14 @@ class GraphVisualizer:
                 bbox_patch = label_artist.get_bbox_patch()
                 if bbox_patch is not None:
                     bbox_patch.set_edgecolor(color)
-        session.ax.set_title(self._dynamic_title(snapshot, session.solution), fontsize=13)
+        title = self._dynamic_title(snapshot, session.solution)
+        if session.title_callback is not None:
+            try:
+                session.title_callback(title)
+            except Exception:
+                pass
+        else:
+            session.ax.set_title(title, fontsize=13)
 
     def _draw_edge(
         self,
@@ -483,14 +585,34 @@ class GraphVisualizer:
                 zorder=6,
             )
 
-    def _apply_axes_style(self, ax: plt.Axes, title: str) -> None:
-        ax.set_title(title, fontsize=13)
-        if self._background_renderer is None:
-            ax.set_xlabel("X")
-            ax.set_ylabel("Y")
+    def _apply_axes_style(
+        self,
+        ax: plt.Axes,
+        title: str,
+        *,
+        session: GraphVisualizationSession | None = None,
+    ) -> None:
+        if session is not None and session.title_callback is not None:
+            try:
+                session.title_callback(title)
+            except Exception:
+                pass
+            ax.set_title("")
         else:
-            ax.set_xlabel("Longitude")
-            ax.set_ylabel("Latitude")
+            ax.set_title(title, fontsize=13)
+        if session is not None and session.external_controls:
+            ax.set_xlabel("")
+            ax.set_ylabel("")
+            ax.tick_params(axis="both", which="both", length=0, labelsize=0)
+            for spine in ax.spines.values():
+                spine.set_visible(False)
+        else:
+            if self._background_renderer is None:
+                ax.set_xlabel("X")
+                ax.set_ylabel("Y")
+            else:
+                ax.set_xlabel("Longitude")
+                ax.set_ylabel("Latitude")
         if self._show_grid:
             ax.grid(True, linestyle=":", alpha=0.35)
         else:
@@ -528,10 +650,31 @@ class GraphVisualizer:
         for route in solution.routes:
             if len(route) < 2:
                 continue
-            xs = [self.instance.coordinates[node][0] for node in route]
-            ys = [self.instance.coordinates[node][1] for node in route]
+            real_route: list[int] = [route[0]]
+            for u_log, v_log in zip(route, route[1:]):
+                real_path = self._real_path_between(u_log, v_log)
+                real_route.extend(real_path[1:])
+            xs = [self.instance.coordinates[node][0] for node in real_route]
+            ys = [self.instance.coordinates[node][1] for node in real_route]
             # Le parcours orange est reserve au passage reel du camion (trail anime).
             ax.plot(xs, ys, color=self.ROUTE_ALT_COLOR, linewidth=1.6, alpha=0.45, zorder=5)
+
+    def _real_path_between(self, u: int, v: int) -> list[int]:
+        """Renvoie la suite de vrais sommets entre deux sommets logiques.
+
+        Utilise completed_paths (sortie de Dijkstra) pour developper une arete du
+        graphe metrique en une sequence d'aretes residuelles reelles.
+        """
+
+        if u == v:
+            return [u]
+        key = (min(u, v), max(u, v))
+        path = self.instance.completed_paths.get(key)
+        if not path:
+            return [u, v]
+        if path[0] == u:
+            return list(path)
+        return list(reversed(path))
 
     def _solution_routes(self, solution: VRPSolution) -> list[list[int]]:
         """Retourne les routes animables (au moins une arete)."""
@@ -550,14 +693,21 @@ class GraphVisualizer:
         self,
         session: GraphVisualizationSession,
     ) -> tuple[
-        list[tuple[float, float, float, int, int, int, int, int, int, int, float, int, int, bool]],
+        list[tuple[float, float, float, int, int, int, int, int, int, int, float, int, int, int, int, bool, bool]],
         dict[int, DynamicGraphSnapshot],
     ]:
         """Construit une animation complete sur toutes les routes.
 
+        Une arete logique (u,v) du graphe metrique est developpee via
+        completed_paths en une suite de vraies aretes residuelles. Le simulateur
+        dynamique n'avance qu'une fois par arete logique (a la fin), pour rester
+        coherent avec l'instant ou GRASP a calcule la solution.
+
         Chaque frame contient:
         (x, y, dx, route_idx, total_routes, segment_idx, total_segments_route,
-         snapshot_step, edge_idx, total_edges, step_cost, from_node, to_node, is_edge_end)
+         snapshot_step, edge_idx, total_edges, step_cost,
+         real_from, real_to, logical_from, logical_to,
+         is_real_end, is_logical_end)
         """
 
         if session.solution is None:
@@ -573,7 +723,9 @@ class GraphVisualizer:
         preview_simulator = self._clone_simulator(self.instance, session.simulator)
         rolling_snapshot = session.snapshot
         edge_snapshots: dict[int, DynamicGraphSnapshot] = {}
-        frames: list[tuple[float, float, float, int, int, int, int, int, int, int, float, int, int, bool]] = []
+        frames: list[
+            tuple[float, float, float, int, int, int, int, int, int, int, float, int, int, int, int, bool, bool]
+        ] = []
         total_routes = len(routes)
         edge_idx = 0
 
@@ -583,8 +735,12 @@ class GraphVisualizer:
                 continue
 
             first_x, first_y = self.instance.coordinates[route[0]]
-            second_x, _ = self.instance.coordinates[route[1]]
-            first_dx = second_x - first_x
+            first_real_path = self._real_path_between(route[0], route[1])
+            if len(first_real_path) > 1:
+                next_x, _ = self.instance.coordinates[first_real_path[1]]
+            else:
+                next_x = first_x
+            first_dx = next_x - first_x
             first_snapshot_step = rolling_snapshot.step
             if not frames:
                 frames.append(
@@ -602,6 +758,9 @@ class GraphVisualizer:
                         0.0,
                         route[0],
                         route[0],
+                        route[0],
+                        route[0],
+                        False,
                         False,
                     )
                 )
@@ -621,41 +780,58 @@ class GraphVisualizer:
                         0.0,
                         route[0],
                         route[0],
+                        route[0],
+                        route[0],
+                        False,
                         False,
                     )
                 )
 
-            for segment_idx, (u, v) in enumerate(
+            for segment_idx, (u_log, v_log) in enumerate(
                 zip(route, route[1:]),
                 start=1,
             ):
                 edge_idx += 1
                 edge_snapshots[edge_idx] = rolling_snapshot
-                x1, y1 = self.instance.coordinates[u]
-                x2, y2 = self.instance.coordinates[v]
-                dx = x2 - x1
                 snapshot_step = rolling_snapshot.step
-                step_cost = rolling_snapshot.completed_costs[u][v]
-                for step in range(1, self.FRAMES_PER_EDGE + 1):
-                    t = step / self.FRAMES_PER_EDGE
-                    frames.append(
-                        (
-                            x1 + (x2 - x1) * t,
-                            y1 + (y2 - y1) * t,
-                            dx,
-                            route_idx,
-                            total_routes,
-                            segment_idx,
-                            total_segments_route,
-                            snapshot_step,
-                            edge_idx,
-                            total_edges,
-                            step_cost,
-                            u,
-                            v,
-                            step == self.FRAMES_PER_EDGE,
+                step_cost = rolling_snapshot.completed_costs[u_log][v_log]
+
+                real_path = self._real_path_between(u_log, v_log)
+                real_sub_edges = list(zip(real_path, real_path[1:]))
+                if not real_sub_edges:
+                    real_sub_edges = [(u_log, v_log)]
+                last_sub = len(real_sub_edges)
+
+                for sub_idx, (ru, rv) in enumerate(real_sub_edges, start=1):
+                    x1, y1 = self.instance.coordinates[ru]
+                    x2, y2 = self.instance.coordinates[rv]
+                    dx = x2 - x1
+                    is_last_sub = sub_idx == last_sub
+                    for step in range(1, self.FRAMES_PER_EDGE + 1):
+                        t = step / self.FRAMES_PER_EDGE
+                        is_real_end = step == self.FRAMES_PER_EDGE
+                        is_logical_end = is_real_end and is_last_sub
+                        frames.append(
+                            (
+                                x1 + (x2 - x1) * t,
+                                y1 + (y2 - y1) * t,
+                                dx,
+                                route_idx,
+                                total_routes,
+                                segment_idx,
+                                total_segments_route,
+                                snapshot_step,
+                                edge_idx,
+                                total_edges,
+                                step_cost,
+                                ru,
+                                rv,
+                                u_log,
+                                v_log,
+                                is_real_end,
+                                is_logical_end,
+                            )
                         )
-                    )
 
                 if edge_idx < total_edges:
                     rolling_snapshot = preview_simulator.advance(rolling_snapshot)
@@ -680,6 +856,9 @@ class GraphVisualizer:
                             0.0,
                             route[-1],
                             route[-1],
+                            route[-1],
+                            route[-1],
+                            False,
                             False,
                         )
                     )
@@ -693,6 +872,13 @@ class GraphVisualizer:
         frames, edge_snapshots = self._build_truck_frames(session)
         if len(frames) < 2:
             return
+
+        routes = self._solution_routes(session.solution)
+        clients_per_route = [max(0, len(route) - 2) for route in routes]
+        cumulative_delivered_before = [0]
+        for count in clients_per_route:
+            cumulative_delivered_before.append(cumulative_delivered_before[-1] + count)
+        total_clients = cumulative_delivered_before[-1]
 
         initial_sprite = self._truck_right if self._truck_right is not None else self._truck_left
         if initial_sprite is None:
@@ -720,18 +906,21 @@ class GraphVisualizer:
             alpha=0.96,
             zorder=8,
         )
-        info_text = session.ax.text(
-            0.02,
-            0.98,
-            "",
-            transform=session.ax.transAxes,
-            ha="left",
-            va="top",
-            fontsize=9,
-            color="#102a43",
-            bbox={"facecolor": "white", "edgecolor": "#cbd5e1", "boxstyle": "round,pad=0.25", "alpha": 0.9},
-            zorder=10,
-        )
+        if session.info_callback is not None:
+            info_text = None
+        else:
+            info_text = session.ax.text(
+                0.02,
+                0.98,
+                "",
+                transform=session.ax.transAxes,
+                ha="left",
+                va="top",
+                fontsize=9,
+                color="#102a43",
+                bbox={"facecolor": "white", "edgecolor": "#cbd5e1", "boxstyle": "round,pad=0.25", "alpha": 0.9},
+                zorder=10,
+            )
         trail_x: list[float] = []
         trail_y: list[float] = []
         total_steps = len(frames)
@@ -782,9 +971,12 @@ class GraphVisualizer:
                 edge_idx,
                 edge_total,
                 step_cost,
-                from_node,
-                to_node,
-                is_edge_end,
+                real_from,
+                real_to,
+                logical_from,
+                logical_to,
+                is_real_end,
+                is_logical_end,
             ) = frames[frame_idx]
 
             if route_idx != last_route_idx:
@@ -797,7 +989,7 @@ class GraphVisualizer:
                 snapshot_state = edge_snapshots.get(edge_idx)
                 if snapshot_state is not None:
                     self._refresh_dynamic_edge_artists(session, snapshot_state)
-                _mark_node_visited(from_node)
+                _mark_node_visited(logical_from)
                 last_visual_edge = edge_idx
 
             artist.xy = (x, y)
@@ -811,31 +1003,53 @@ class GraphVisualizer:
             elif dx > 1e-9 and self._truck_right is not None:
                 image_box.set_data(self._truck_right)
 
-            if is_edge_end:
-                _mark_node_visited(to_node)
-                if segment_idx == segment_total:
-                    # Fin de sous-tournee: on retire le trace bleu
-                    # pour revenir au rendu dynamique colore des aretes.
-                    trail_x.clear()
-                    trail_y.clear()
-                    trail_line.set_data([], [])
+            if is_real_end:
+                _mark_node_visited(real_to)
+            if is_logical_end and segment_idx == segment_total:
+                # Fin de sous-tournee: on retire le trace bleu
+                # pour revenir au rendu dynamique colore des aretes.
+                trail_x.clear()
+                trail_y.clear()
+                trail_line.set_data([], [])
 
-            info_text.set_text(
-                f"Etape {frame_idx + 1}/{total_steps} | "
-                f"t={snapshot_step} | "
-                f"Arete {edge_idx}/{edge_total} | "
-                f"v{from_node}->v{to_node} | "
-                f"Cout_t={step_cost:.2f} | "
-                f"Route {route_idx}/{route_total} | "
-                f"Segment {segment_idx}/{segment_total}"
+            route_pos = max(0, min(route_idx - 1, len(clients_per_route) - 1))
+            clients_on_truck_at_start = clients_per_route[route_pos] if clients_per_route else 0
+            delivered_this_route = segment_idx if is_logical_end else max(0, segment_idx - 1)
+            delivered_this_route = min(delivered_this_route, clients_on_truck_at_start)
+            current_load = max(0, clients_on_truck_at_start - delivered_this_route)
+            delivered_total = cumulative_delivered_before[route_pos] + delivered_this_route
+            delivered_total = min(delivered_total, total_clients)
+            remaining_total = max(0, total_clients - delivered_total)
+
+            if segment_idx == 0 or logical_to == self.instance.depot:
+                destination_label = f"depot v{self.instance.depot}"
+            else:
+                destination_label = f"ville v{logical_to}"
+
+            info_msg = (
+                f"Camion {route_idx}/{route_total}   •   destination : {destination_label}\n"
+                f"Charge camion : {current_load} colis   "
+                f"(livraison {delivered_this_route}/{clients_on_truck_at_start} sur cette tournee)\n"
+                f"Villes restantes a livrer : {remaining_total}/{total_clients}"
             )
-            return artist, trail_line, info_text
+            if info_text is not None:
+                info_text.set_text(info_msg)
+            if session.info_callback is not None:
+                try:
+                    session.info_callback(info_msg)
+                except Exception:
+                    pass
+            artists: list[object] = [artist, trail_line]
+            if info_text is not None:
+                artists.append(info_text)
+            return tuple(artists)
 
+        base_interval = max(1, int(round(self.ANIMATION_INTERVAL_MS / max(0.01, session.speed_multiplier))))
         session.animation = FuncAnimation(
             session.fig,
             _update,
             frames=len(frames),
-            interval=self.ANIMATION_INTERVAL_MS,
+            interval=base_interval,
             blit=False,
             repeat=False,
         )

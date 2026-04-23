@@ -135,10 +135,18 @@ class QuartierServiceResult:
     dynamic_instance: GraphInstance
 
 
-def build_quartier_dynamic_session(result: QuartierServiceResult) -> GraphVisualizationSession:
+def build_quartier_dynamic_session(
+    result: QuartierServiceResult,
+    *,
+    title_callback=None,
+    info_callback=None,
+    legend_callback=None,
+    state_callback=None,
+) -> GraphVisualizationSession:
     generator = GraphGenerator(result.dynamic_instance.config)
-    show_edge_labels = True
-    show_node_labels = result.dynamic_instance.node_count <= 80
+    # Sur OSM: beaucoup d'aretes reelles -> les labels saturent la carte.
+    show_edge_labels = False
+    show_node_labels = False
     visualizer = GraphVisualizer(
         result.dynamic_instance,
         generator,
@@ -147,7 +155,16 @@ def build_quartier_dynamic_session(result: QuartierServiceResult) -> GraphVisual
         show_node_labels=show_node_labels,
         show_grid=False,
     )
-    return visualizer.show_dynamic_graph(size=(14.5, 9.5))
+    # Titre, info et legende seront affiches dans des widgets tk externes
+    # pour liberer toute la figure au canvas de la carte.
+    return visualizer.show_dynamic_graph(
+        size=(12.0, 10.5),
+        external_controls=True,
+        title_callback=title_callback,
+        info_callback=info_callback,
+        legend_callback=legend_callback,
+        state_callback=state_callback,
+    )
 
 
 def run_quartier_service(

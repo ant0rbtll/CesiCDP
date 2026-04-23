@@ -53,6 +53,19 @@ def darken(color: str, amount: float = 0.2) -> str:
     return blend(color, "#000000", amount)
 
 
+def set_supported_cursor(widget: tk.Widget, candidates: tuple[str, ...]) -> str:
+    """Applique le premier curseur reconnu par Tk sur la plateforme courante."""
+    for cursor in candidates:
+        try:
+            widget.configure(cursor=cursor)
+            return cursor
+        except tk.TclError:
+            continue
+
+    widget.configure(cursor="")
+    return ""
+
+
 class ToolTip:
     """Tooltip moderne avec style cohérent."""
 
@@ -151,7 +164,6 @@ class ColoredButton(tk.Button):
             bd=0,
             padx=padx,
             pady=pady,
-            cursor="hand2",
             disabledforeground=blend(PALETTE["text_inverse"], PALETTE["surface_alt"], 0.5),
             font=(FONT_FAMILY, font_size, "bold"),
             highlightthickness=0,
@@ -162,6 +174,10 @@ class ColoredButton(tk.Button):
         self._active_color = active
         self._disabled_color = disabled
         self._animation_step = 0
+        self._idle_cursor = set_supported_cursor(
+            self,
+            ("hand2", "pointinghand", "hand", "arrow"),
+        )
         
         self.bind("<Enter>", self._on_enter)
         self.bind("<Leave>", self._on_leave)
@@ -184,15 +200,15 @@ class ColoredButton(tk.Button):
                 state="disabled",
                 text=self.running_text,
                 bg=self._disabled_color,
-                cursor="wait",
             )
+            set_supported_cursor(self, ("watch", "wait", "spinning", "arrow"))
         else:
             self.configure(
                 state="normal",
                 text=self.idle_text,
                 bg=self._base_color,
-                cursor="hand2",
             )
+            set_supported_cursor(self, (self._idle_cursor, "hand2", "pointinghand", "hand", "arrow"))
 
 
 class RunningIndicator(ttk.Frame):
