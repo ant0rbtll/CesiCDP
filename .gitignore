@@ -40,8 +40,8 @@ image/benchmark_runtime_*.png
 # Benchmark outputs
 benchmark_results*/
 
-# Cache Dash
-cache/dash_diskcache/
+# Cache
+cache/
 
 # Artefacts locaux
 testlog.py
