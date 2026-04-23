@@ -34,6 +34,36 @@ utiliser soit un venv, soit :
 python3 -m pip install --user --break-system-packages -r requirements.txt
 ```
 
+## Lancer la WebUI Dash
+
+Depuis la racine du depot, creer et activer un environnement virtuel :
+
+```bash
+python3 -m venv .venv_dash
+source .venv_dash/bin/activate
+```
+
+Installer les dependances :
+
+```bash
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+```
+
+Lancer le serveur WebUI :
+
+```bash
+python3 dash_app/app.py
+```
+
+Puis ouvrir :
+
+```text
+http://127.0.0.1:8050
+```
+
+Pour quitter le serveur : `Ctrl+C`.
+
 Puis :
 
 ```python
