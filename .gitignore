@@ -22,3 +22,6 @@ Thumbs.db
 
 # Image
 src/cesipath/algorithms/image/*.png
+
+# Benchmark outputs
+benchmark_results*/

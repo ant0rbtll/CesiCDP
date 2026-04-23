@@ -28,7 +28,8 @@ def run_dynamic_benchmark(
     *,
     algo_kwargs: dict[str, dict[str, Any]] | None = None,
     strategy_kwargs: dict[str, dict[str, Any]] | None = None,
-    strategies: tuple[str, ...] = ("fixed", "reopt"),
+    reopt_algos: tuple[str, ...] | None = ("tabu",),
+    strategies: tuple[str, ...] = ("fixed", "reopt", "reactive"),
     verbose: bool = True,
 ) -> list[DynamicBenchmarkRow]:
     """Lance ``algos`` en dynamique sur (sizes x instance_seeds x sim_seeds).
@@ -39,7 +40,9 @@ def run_dynamic_benchmark(
     ``algo_kwargs`` regle les hyperparametres du solveur initial et des
     re-resolutions completes. ``strategy_kwargs`` passe des options
     supplementaires a ``execute_dynamic`` (par ex. ``adaptive_budget=True``
-    pour ``reopt``).
+    pour ``reopt``). ``reopt_algos`` permet de limiter la re-optimisation
+    lourde a un sous-ensemble d'algorithmes ; par defaut, seul ``tabu`` la
+    conserve.
     """
 
     algo_kwargs = algo_kwargs or {}
@@ -60,6 +63,12 @@ def run_dynamic_benchmark(
                     kwargs.setdefault("seed", inst_seed)
 
                     for strategy in strategies:
+                        if (
+                            strategy == "reopt"
+                            and reopt_algos is not None
+                            and algo_name not in reopt_algos
+                        ):
+                            continue
                         exec_kwargs = dict(strategy_kwargs.get(strategy, {}))
                         simulator = DynamicNetworkSimulator(instance, seed=sim_seed)
                         execution = execute_dynamic(
@@ -81,6 +90,7 @@ def run_dynamic_benchmark(
                                 "realized_cost": execution.realized_cost,
                                 "reoptimizations": execution.reoptimizations,
                                 "solver_time": execution.solver_time,
+                                "dijkstra_time": execution.dijkstra_time,
                                 "steps": execution.total_steps,
                                 "depot_replans": execution.depot_replans,
                                 "reactive_repairs": execution.reactive_repairs,
@@ -193,6 +203,14 @@ def _plot_dynamic_gain_vs_strategy(
             gain_lookup[key] = 100.0 * (fixed[key] - compared[key]) / fixed[key]
 
     fig, ax = plt.subplots(figsize=(10, 6))
+    if not gain_lookup:
+        ax.set_title(title)
+        ax.set_xlabel("Taille du graphe (n)")
+        ax.set_ylabel("Gain relatif (%)")
+        ax.text(0.5, 0.5, "Aucune comparaison exploitable", ha="center", va="center", transform=ax.transAxes)
+        fig.tight_layout()
+        return fig
+
     width = 0.8 / max(len(algos), 1)
 
     for a_idx, algo in enumerate(algos):
@@ -325,6 +343,7 @@ def summarize_dynamic_benchmark(
         realized = [r["realized_cost"] for r in rows]
         planned = [r["planned_cost"] for r in rows]
         times = [r["solver_time"] for r in rows]
+        dijkstra_times = [r["dijkstra_time"] for r in rows]
         reopt = [r["reoptimizations"] for r in rows]
         depot_replans = [r.get("depot_replans", 0) for r in rows]
         reactive_repairs = [r.get("reactive_repairs", 0) for r in rows]
@@ -339,6 +358,7 @@ def summarize_dynamic_benchmark(
                 "realized_min": min(realized),
                 "realized_max": max(realized),
                 "solver_time_mean": sum(times) / len(times),
+                "dijkstra_time_mean": sum(dijkstra_times) / len(dijkstra_times),
                 "reoptimizations_mean": sum(reopt) / len(reopt),
                 "depot_replans_mean": sum(depot_replans) / len(depot_replans),
                 "reactive_repairs_mean": sum(reactive_repairs) / len(reactive_repairs),

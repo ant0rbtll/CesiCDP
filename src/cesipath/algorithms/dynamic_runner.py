@@ -40,6 +40,7 @@ class DynamicExecution:
     step_costs: list[float]
     reoptimizations: int
     solver_time: float
+    dijkstra_time: float
     total_steps: int
     depot_replans: int
     reactive_repairs: int
@@ -176,6 +177,7 @@ def execute_dynamic(
     t0 = time.perf_counter()
     initial_solution = solver_fn(initial_si, **initial_kwargs)
     solver_time = time.perf_counter() - t0
+    dijkstra_time = snapshot.shortest_paths_time
     planned_cost = initial_solution.total_cost
     reoptimizations = 1
 
@@ -216,6 +218,7 @@ def execute_dynamic(
             total_steps += 1
             if remaining_clients or remaining_routes or route_position < len(current_route) - 1:
                 snapshot = simulator.advance(snapshot)
+                dijkstra_time += snapshot.shortest_paths_time
             route_position += 1
 
         if not remaining_clients:
@@ -232,8 +235,8 @@ def execute_dynamic(
             t0 = time.perf_counter()
             sub_solution = solver_fn(sub_si, **sub_kwargs)
             solver_time += time.perf_counter() - t0
-            remaining_routes = [route[:] for route in sub_solution.routes]
             reoptimizations += 1
+            remaining_routes = [route[:] for route in sub_solution.routes]
             depot_replans += 1
         elif strategy == "reactive":
             t0 = time.perf_counter()
@@ -251,6 +254,7 @@ def execute_dynamic(
         step_costs=step_costs,
         reoptimizations=reoptimizations,
         solver_time=round(solver_time, 4),
+        dijkstra_time=round(dijkstra_time, 4),
         total_steps=total_steps,
         depot_replans=depot_replans,
         reactive_repairs=reactive_repairs,
