@@ -4,6 +4,13 @@ Ce depot contient une implementation pedagogique de CESIPATH autour d'un problem
 
 Le README est le point d'entree conseille pour la correction. Il indique quoi lire, dans quel ordre, et pourquoi chaque notebook existe.
 
+## Livrables
+
+| Livrable | Fichier |
+|---|---|
+| **Livrable 1** — modelisation et formalisation du probleme VRP-CDR | `livrable_modelisation_1.ipynb` (a la racine) |
+| **Livrable 2** — implementation, algorithmes, benchmark et interface | Tous les notebooks du dossier `notebooks/` (voir parcours de lecture ci-dessous) + interface web (`main_gui.py`) |
+
 ## Idee generale
 
 Le projet construit une instance VRP-CDR en plusieurs couches :
