@@ -420,6 +420,17 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
         return False, "Lancer le benchmark"
 
     @app.callback(
+        Output("benchmark-results-shell", "className"),
+        Output("benchmark-results-toggle", "children"),
+        Input("benchmark-results-toggle", "n_clicks"),
+    )
+    def sync_results_display_mode(n_clicks: int | None) -> tuple[str, str]:
+        expanded = bool(n_clicks and n_clicks % 2 == 1)
+        if expanded:
+            return "card benchmark-results-shell benchmark-results-shell-expanded", "Quitter le plein ecran"
+        return "card benchmark-results-shell", "Plein ecran resultats"
+
+    @app.callback(
         Output("log-output-benchmark", "children"),
         Output("store-benchmark", "data", allow_duplicate=True),
         Input("log-interval-benchmark", "n_intervals"),

@@ -1,13 +1,30 @@
 (function () {
-    if (window.__quartier_anim_bound) {
+    if (window.__cesipath_anim_bound) {
         return;
     }
-    window.__quartier_anim_bound = true;
+    window.__cesipath_anim_bound = true;
 
-    var state = {
-        speed: 1.0,
-        playing: false
-    };
+    var contexts = [
+        {
+            key: "quartier",
+            graphId: "graph-quartier-animation",
+            playId: "quartier-play",
+            pauseId: "quartier-pause",
+            sliderId: "slider-quartier-vitesse"
+        },
+        {
+            key: "generation",
+            graphId: "graph-generation-animation",
+            playId: "generation-play",
+            pauseId: "generation-pause",
+            sliderId: "slider-generation-vitesse"
+        }
+    ];
+
+    var state = {};
+    contexts.forEach(function (context) {
+        state[context.key] = {speed: 1.0, playing: false};
+    });
 
     function toNumber(value, fallback) {
         var parsed = Number(value);
@@ -17,8 +34,8 @@
         return parsed;
     }
 
-    function getGraph() {
-        var root = document.getElementById("graph-quartier-animation");
+    function getGraph(context) {
+        var root = document.getElementById(context.graphId);
         if (!root) {
             return null;
         }
@@ -32,8 +49,8 @@
         return null;
     }
 
-    function playOptions() {
-        var duration = Math.max(1, Math.round(200 / state.speed));
+    function playOptions(context) {
+        var duration = Math.max(1, Math.round(200 / state[context.key].speed));
         return {
             frame: {duration: duration, redraw: true},
             transition: {duration: 0},
@@ -50,63 +67,69 @@
         };
     }
 
-    function play() {
-        var gd = getGraph();
+    function play(context) {
+        var gd = getGraph(context);
         if (!gd || typeof Plotly === "undefined" || !Plotly.animate) {
             return;
         }
-        state.playing = true;
-        Plotly.animate(gd, null, playOptions());
+        state[context.key].playing = true;
+        Plotly.animate(gd, null, playOptions(context));
     }
 
-    function pause() {
-        var gd = getGraph();
+    function pause(context) {
+        var gd = getGraph(context);
         if (!gd || typeof Plotly === "undefined" || !Plotly.animate) {
             return;
         }
-        state.playing = false;
+        state[context.key].playing = false;
         Plotly.animate(gd, [null], pauseOptions());
     }
 
-    function applySpeedLive(speedValue) {
-        state.speed = toNumber(speedValue, 1.0);
-        if (!state.playing) {
+    function applySpeedLive(context, speedValue) {
+        state[context.key].speed = toNumber(speedValue, 1.0);
+        if (!state[context.key].playing) {
             return;
         }
-        var gd = getGraph();
+        var gd = getGraph(context);
         if (!gd || typeof Plotly === "undefined" || !Plotly.animate) {
             return;
         }
-        Plotly.animate(gd, null, playOptions());
+        Plotly.animate(gd, null, playOptions(context));
     }
 
     document.addEventListener("click", function (event) {
-        var playButton = event.target.closest("#quartier-play");
-        if (playButton) {
-            event.preventDefault();
-            play();
-            return;
-        }
-        var pauseButton = event.target.closest("#quartier-pause");
-        if (pauseButton) {
-            event.preventDefault();
-            pause();
-        }
+        contexts.forEach(function (context) {
+            var playButton = event.target.closest("#" + context.playId);
+            if (playButton) {
+                event.preventDefault();
+                play(context);
+                return;
+            }
+            var pauseButton = event.target.closest("#" + context.pauseId);
+            if (pauseButton) {
+                event.preventDefault();
+                pause(context);
+            }
+        });
     });
 
     document.addEventListener("input", function (event) {
-        var slider = event.target.closest("#slider-quartier-vitesse");
-        if (!slider) {
-            return;
-        }
-        applySpeedLive(slider.value);
+        contexts.forEach(function (context) {
+            var slider = event.target.closest("#" + context.sliderId);
+            if (!slider) {
+                return;
+            }
+            applySpeedLive(context, slider.value);
+        });
     });
 
     document.addEventListener("change", function (event) {
-        var slider = event.target.closest("#slider-quartier-vitesse");
-        if (!slider) {
-            return;
-        }
-        applySpeedLive(slider.value);
+        contexts.forEach(function (context) {
+            var slider = event.target.closest("#" + context.sliderId);
+            if (!slider) {
+                return;
+            }
+            applySpeedLive(context, slider.value);
+        });
     });
 })();

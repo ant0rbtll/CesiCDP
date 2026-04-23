@@ -35,7 +35,7 @@ except Exception:
     CONTEXTILY_AVAILABLE = False
 
 from components.log_console import LOG_STORE, render_log_lines
-from services import validate_quartier_payload, validate_quartier_simulation_payload
+from services import calculate_vrp_solution_stats, validate_quartier_payload, validate_quartier_simulation_payload
 from theme import ANIMATION_COLORS, PALETTE
 
 _MAX_LOG_LINES = 800
@@ -1228,6 +1228,13 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
             ),
         )
 
+        # Calculer les stats pour la tournee
+        stats = calculate_vrp_solution_stats(
+            solution,
+            demands=solver_input.demands,
+            depot=solver_input.depot,
+        )
+
         return html.Div(
             [
                 dcc.Graph(
@@ -1332,6 +1339,75 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
                             [
                                 html.Span("Fluide", style={"color": ANIMATION_COLORS["font_light"], "fontSize": "11px"}),
                                 html.Span("Chargee", style={"color": ANIMATION_COLORS["font_light"], "fontSize": "11px"}),
+                            ],
+                            style={"display": "flex", "justifyContent": "space-between"},
+                        ),
+                        # Separator before stats
+                        html.Hr(
+                            style={
+                                "borderColor": PALETTE["border_dark"],
+                                "margin": "12px 0",
+                            }
+                        ),
+                        # Stats section
+                        html.H4(
+                            "Recapitulatif tournee",
+                            style={
+                                "margin": "0 0 10px 0",
+                                "color": ANIMATION_COLORS["font_light"],
+                                "fontSize": "13px",
+                                "fontWeight": "600",
+                            },
+                        ),
+                        html.Div(
+                            [
+                                html.Span(
+                                    "Livraisons :",
+                                    style={"color": ANIMATION_COLORS["font_light"], "fontSize": "11px"},
+                                ),
+                                html.Span(
+                                    str(stats["num_deliveries"]),
+                                    style={"color": ANIMATION_COLORS["light"], "fontSize": "11px", "fontWeight": "600"},
+                                ),
+                            ],
+                            style={"display": "flex", "justifyContent": "space-between", "marginBottom": "6px"},
+                        ),
+                        html.Div(
+                            [
+                                html.Span(
+                                    "Sous-tournees :",
+                                    style={"color": ANIMATION_COLORS["font_light"], "fontSize": "11px"},
+                                ),
+                                html.Span(
+                                    str(stats["num_routes"]),
+                                    style={"color": ANIMATION_COLORS["light"], "fontSize": "11px", "fontWeight": "600"},
+                                ),
+                            ],
+                            style={"display": "flex", "justifyContent": "space-between", "marginBottom": "6px"},
+                        ),
+                        html.Div(
+                            [
+                                html.Span(
+                                    "Cout total :",
+                                    style={"color": ANIMATION_COLORS["font_light"], "fontSize": "11px"},
+                                ),
+                                html.Span(
+                                    f"{stats['total_cost']:.2f}",
+                                    style={"color": ANIMATION_COLORS["light"], "fontSize": "11px", "fontWeight": "600"},
+                                ),
+                            ],
+                            style={"display": "flex", "justifyContent": "space-between", "marginBottom": "6px"},
+                        ),
+                        html.Div(
+                            [
+                                html.Span(
+                                    "Cout/tournee :",
+                                    style={"color": ANIMATION_COLORS["font_light"], "fontSize": "11px"},
+                                ),
+                                html.Span(
+                                    f"{stats['avg_cost_per_route']:.2f}",
+                                    style={"color": ANIMATION_COLORS["light"], "fontSize": "11px", "fontWeight": "600"},
+                                ),
                             ],
                             style={"display": "flex", "justifyContent": "space-between"},
                         ),

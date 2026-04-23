@@ -181,6 +181,10 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
+.three-cols {
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+}
+
 .field.full {
   grid-column: 1 / -1;
 }
@@ -354,6 +358,56 @@ select {
   border: 1px solid var(--color-border);
   border-radius: var(--radius-sm);
   min-height: var(--graph-height);
+  height: var(--graph-height);
+}
+
+.graph-card .js-plotly-plot,
+.graph-card .plot-container,
+.graph-card .svg-container {
+  height: 100% !important;
+}
+
+.benchmark-results-wrap {
+  display: grid;
+}
+
+.benchmark-results-shell {
+  gap: var(--space-md);
+}
+
+.benchmark-results-header {
+  display: flex;
+  gap: var(--space-md);
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.benchmark-results-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.benchmark-results-grid .graph-card {
+  min-height: 24rem;
+  height: 24rem;
+}
+
+.benchmark-results-shell-expanded {
+  position: fixed;
+  inset: 1rem;
+  z-index: 1200;
+  overflow: auto;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
+}
+
+.benchmark-results-shell-expanded .benchmark-results-grid {
+  grid-template-columns: 1fr;
+}
+
+.benchmark-results-shell-expanded .benchmark-results-grid .graph-card {
+  min-height: calc((100vh - 14rem) / 3);
+  height: calc((100vh - 14rem) / 3);
 }
 
 .generation-graph-shell {
@@ -373,13 +427,26 @@ select {
   gap: var(--space-sm);
 }
 
+.generation-playback-actions {
+  display: flex;
+  gap: 0;
+  flex-wrap: wrap;
+}
+
 .generation-graph-body {
-  height: clamp(28rem, 68vh, 44rem);
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr);
+  gap: var(--space-md);
+  height: clamp(32rem, 74vh, 52rem);
   min-height: 28rem;
 }
 
 .generation-graph-shell-expanded {
-  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.14);
+  position: fixed;
+  inset: 1rem;
+  z-index: 1300;
+  overflow: auto;
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.22);
 }
 
 .generation-graph-shell-expanded .generation-graph-body {
@@ -387,10 +454,28 @@ select {
   min-height: 42rem;
 }
 
-.generation-graph-body .dash-graph,
-.generation-graph-body .js-plotly-plot,
-.generation-graph-body .plot-container,
-.generation-graph-body .svg-container {
+.generation-animation-container {
+  min-height: 26rem;
+  height: 100%;
+  min-width: 0;
+}
+
+.generation-animation-placeholder {
+  min-height: 22rem;
+  display: grid;
+  place-items: center;
+  border: 1px dashed var(--color-border-dark);
+  border-radius: var(--radius-sm);
+  color: var(--color-text-dim);
+  background: var(--color-surface-soft);
+  padding: var(--space-lg);
+  text-align: center;
+}
+
+.generation-animation-container .dash-graph,
+.generation-animation-container .js-plotly-plot,
+.generation-animation-container .plot-container,
+.generation-animation-container .svg-container {
   height: 100% !important;
 }
 
@@ -439,6 +524,7 @@ select {
 
 @media (max-width: 60rem) {
   .two-cols,
+  .three-cols,
   .graph-grid,
   .action-row {
     grid-template-columns: 1fr;
@@ -452,6 +538,15 @@ select {
   .generation-graph-shell-expanded .generation-graph-body {
     height: 80vh;
     min-height: 30rem;
+  }
+
+  .benchmark-results-shell-expanded {
+    inset: 0.5rem;
+  }
+
+  .benchmark-results-shell-expanded .benchmark-results-grid .graph-card {
+    min-height: 22rem;
+    height: 22rem;
   }
 
   .quartier-controls-row {

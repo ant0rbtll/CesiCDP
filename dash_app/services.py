@@ -259,6 +259,59 @@ def validate_quartier_simulation_payload(
     }
 
 
+def calculate_vrp_solution_stats(
+    solution: Any,
+    demands: dict[int, int] | None = None,
+    depot: int = 0,
+) -> dict[str, Any]:
+    """Calculate statistics from a VRP solution for display.
+    
+    Args:
+        solution: VRPSolution object with routes and total_cost
+        demands: Optional dict mapping node IDs to demand quantities
+        depot: Depot node ID (default 0, usually not counted in deliveries)
+    
+    Returns:
+        Dictionary with calculated stats for display
+    """
+    from cesipath.algorithms.neighborhood import route_load
+    
+    # Count routes and deliveries
+    num_routes = len(solution.routes)
+    
+    # Count unique clients (all non-depot nodes that appear in any route)
+    clients_set = set()
+    total_load_delivered = 0
+    
+    for route in solution.routes:
+        # Each route: [depot, client1, client2, ..., depot]
+        # So we extract nodes between first and last
+        for node in route[1:-1]:
+            clients_set.add(int(node))
+            if demands:
+                total_load_delivered += demands.get(int(node), 0)
+    
+    num_deliveries = len(clients_set)
+    total_cost = float(solution.total_cost)
+    
+    # Calculate average cost per route
+    avg_cost_per_route = total_cost / num_routes if num_routes > 0 else 0.0
+    
+    # Calculate average load per route (if demands available)
+    avg_load_per_route = 0.0
+    if demands:
+        avg_load_per_route = total_load_delivered / num_routes if num_routes > 0 else 0.0
+    
+    return {
+        "num_deliveries": num_deliveries,
+        "num_routes": num_routes,
+        "total_cost": total_cost,
+        "avg_cost_per_route": avg_cost_per_route,
+        "total_load_delivered": total_load_delivered if demands else 0,
+        "avg_load_per_route": avg_load_per_route,
+    }
+
+
 @dataclass
 class BenchmarkServiceResult:
     """Structured benchmark outputs."""

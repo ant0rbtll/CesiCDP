@@ -150,11 +150,62 @@ def _benchmark_tab() -> html.Div:
             build_log_console(prefix="benchmark", title="Journal benchmark"),
             html.Div(
                 [
-                    dcc.Graph(id="graph-benchmark-quality", className="graph-card"),
-                    dcc.Graph(id="graph-benchmark-gap", className="graph-card"),
-                    dcc.Graph(id="graph-benchmark-runtime", className="graph-card"),
+                    html.Div(
+                        [
+                            html.Div(
+                                [
+                                    html.Div(
+                                        [
+                                            html.H3("Resultats benchmark", className="section-title"),
+                                            html.P(
+                                                "Activez le mode plein ecran pour analyser les courbes sans contrainte de place.",
+                                                className="section-hint",
+                                            ),
+                                        ]
+                                    ),
+                                    html.Div(
+                                        [
+                                            html.Button(
+                                                "Plein ecran resultats",
+                                                id="benchmark-results-toggle",
+                                                n_clicks=0,
+                                                className="btn btn-primary",
+                                            )
+                                        ],
+                                        className="benchmark-results-actions",
+                                    ),
+                                ],
+                                className="benchmark-results-header",
+                            ),
+                            html.Div(
+                                [
+                                    dcc.Graph(
+                                        id="graph-benchmark-quality",
+                                        className="graph-card",
+                                        config={"responsive": True, "displaylogo": False},
+                                        style={"height": "100%"},
+                                    ),
+                                    dcc.Graph(
+                                        id="graph-benchmark-gap",
+                                        className="graph-card",
+                                        config={"responsive": True, "displaylogo": False},
+                                        style={"height": "100%"},
+                                    ),
+                                    dcc.Graph(
+                                        id="graph-benchmark-runtime",
+                                        className="graph-card",
+                                        config={"responsive": True, "displaylogo": False},
+                                        style={"height": "100%"},
+                                    ),
+                                ],
+                                className="graph-grid benchmark-results-grid",
+                            ),
+                        ],
+                        id="benchmark-results-shell",
+                        className="card benchmark-results-shell",
+                    ),
                 ],
-                className="graph-grid",
+                className="benchmark-results-wrap",
             ),
         ],
         className="tab-content",
@@ -274,9 +325,78 @@ def _generation_tab() -> html.Div:
                     ),
                     html.Div(
                         [
+                            html.H3("Simulation VRP", className="section-title"),
+                            html.Div(
+                                [
+                                    html.Div(
+                                        [
+                                            html.Label("Algorithme", className="field-label"),
+                                            dcc.Dropdown(
+                                                id="generation-algo",
+                                                options=[
+                                                    {"label": "GRASP", "value": "grasp"},
+                                                    {"label": "Recherche Tabou", "value": "tabu_search"},
+                                                    {"label": "Recuit Simule", "value": "simulated_annealing"},
+                                                    {"label": "Algorithme Genetique", "value": "genetic_algorithm"},
+                                                ],
+                                                value="grasp",
+                                                clearable=False,
+                                                className="dropdown",
+                                            ),
+                                            html.Small(
+                                                "Methode utilisee pour resoudre la tournee sur le graphe genere.",
+                                                className="field-hint",
+                                            ),
+                                        ],
+                                        className="field",
+                                    ),
+                                    html.Div(
+                                        [
+                                            html.Label("Capacite vehicule", className="field-label"),
+                                            dcc.Input(
+                                                id="generation-capacity",
+                                                type="number",
+                                                value=40,
+                                                min=1,
+                                                step=1,
+                                                className="input-text",
+                                            ),
+                                            html.Small(
+                                                "Charge maximale transportee par camion.",
+                                                className="field-hint",
+                                            ),
+                                        ],
+                                        className="field",
+                                    ),
+                                    html.Div(
+                                        [
+                                            html.Label("Seed simulation", className="field-label"),
+                                            dcc.Input(
+                                                id="generation-sim-seed",
+                                                type="number",
+                                                value=42,
+                                                min=0,
+                                                step=1,
+                                                className="input-text",
+                                            ),
+                                            html.Small(
+                                                "Controle la reproductibilite du solveur et de la dynamique.",
+                                                className="field-hint",
+                                            ),
+                                        ],
+                                        className="field",
+                                    ),
+                                ],
+                                className="field-grid three-cols",
+                            ),
+                        ],
+                        className="generation-sim-settings",
+                    ),
+                    html.Div(
+                        [
                             build_running_indicator("generation"),
                             html.Button(
-                                "Générer",
+                                "Generer et simuler",
                                 id="generation-run",
                                 n_clicks=0,
                                 className="btn btn-success",
@@ -293,9 +413,9 @@ def _generation_tab() -> html.Div:
                         [
                             html.Div(
                                 [
-                                    html.H3("Visualisation instance", className="section-title"),
+                                    html.H3("Simulation instance", className="section-title"),
                                     html.P(
-                                        "Activez le mode etendu pour retrouver une lecture proche du popup desktop.",
+                                        "Simulation dynamique du graphe genere, avec animation du camion comme dans l'onglet Quartier.",
                                         className="section-hint",
                                     ),
                                 ]
@@ -303,7 +423,7 @@ def _generation_tab() -> html.Div:
                             html.Div(
                                 [
                                     html.Button(
-                                        "Agrandir le graphe",
+                                        "Plein ecran simulation",
                                         id="generation-graph-toggle",
                                         n_clicks=0,
                                         className="btn btn-primary",
@@ -316,12 +436,50 @@ def _generation_tab() -> html.Div:
                     ),
                     html.Div(
                         [
-                            dcc.Graph(
-                                id="graph-generation-instance",
-                                className="generation-graph-canvas",
-                                config={"responsive": True, "displaylogo": False},
-                                style={"height": "100%"},
-                            )
+                            html.Div(
+                                [
+                                    html.Button(
+                                        "Start",
+                                        id="generation-play",
+                                        className="btn btn-primary",
+                                        n_clicks=0,
+                                    ),
+                                    html.Button(
+                                        "Pause",
+                                        id="generation-pause",
+                                        className="btn",
+                                        n_clicks=0,
+                                        style={"background": "var(--color-error)"},
+                                    ),
+                                ],
+                                className="generation-playback-actions",
+                            ),
+                            html.Div(
+                                [
+                                    html.Label("Vitesse animation :", className="quartier-speed-label"),
+                                    dcc.Slider(
+                                        id="slider-generation-vitesse",
+                                        min=0.5,
+                                        max=10.0,
+                                        step=0.5,
+                                        value=1.0,
+                                        updatemode="drag",
+                                        marks={
+                                            0.5: "0.5x",
+                                            1.0: "1x",
+                                            2.0: "2x",
+                                            5.0: "5x",
+                                            10.0: "10x",
+                                        },
+                                        tooltip={"placement": "bottom"},
+                                    ),
+                                ],
+                                className="quartier-speed-block",
+                            ),
+                            html.Div(
+                                id="animation-container-generation",
+                                className="generation-animation-container",
+                            ),
                         ],
                         className="generation-graph-body",
                     ),
@@ -586,6 +744,9 @@ def build_layout() -> html.Div:
                     "session_id": None,
                     "node_count": 15,
                     "seed": 42,
+                    "algo_name": "grasp",
+                    "capacity": 40,
+                    "simulation_seed": 42,
                     "dynamic_sigma": 0.18,
                     "dynamic_mean_reversion_strength": 0.35,
                     "dynamic_max_multiplier": 1.8,
