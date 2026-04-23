@@ -27,17 +27,26 @@ def run_dynamic_benchmark(
     algos: dict[str, SolverFn],
     *,
     algo_kwargs: dict[str, dict[str, Any]] | None = None,
-    strategies: tuple[str, ...] = ("fixed", "reopt"),
+    strategy_kwargs: dict[str, dict[str, Any]] | None = None,
+    reopt_algos: tuple[str, ...] | None = ("tabu",),
+    strategies: tuple[str, ...] = ("fixed", "reopt", "reactive"),
     verbose: bool = True,
 ) -> list[DynamicBenchmarkRow]:
     """Lance ``algos`` en dynamique sur (sizes x instance_seeds x sim_seeds).
 
-    Pour chaque combinaison on execute ``fixed`` (plan initial suivi jusqu'au
-    bout) et/ou ``reopt`` (re-resolution a chaque retour au depot). Les
-    strategies peuvent etre filtrees via le parametre ``strategies``.
+    Pour chaque combinaison on execute une ou plusieurs strategies parmi
+    ``fixed``, ``reopt`` et ``reactive``.
+
+    ``algo_kwargs`` regle les hyperparametres du solveur initial et des
+    re-resolutions completes. ``strategy_kwargs`` passe des options
+    supplementaires a ``execute_dynamic`` (par ex. ``adaptive_budget=True``
+    pour ``reopt``). ``reopt_algos`` permet de limiter la re-optimisation
+    lourde a un sous-ensemble d'algorithmes ; par defaut, seul ``tabu`` la
+    conserve.
     """
 
     algo_kwargs = algo_kwargs or {}
+    strategy_kwargs = strategy_kwargs or {}
     results: list[DynamicBenchmarkRow] = []
 
     for size in sizes:
@@ -54,13 +63,21 @@ def run_dynamic_benchmark(
                     kwargs.setdefault("seed", inst_seed)
 
                     for strategy in strategies:
+                        if (
+                            strategy == "reopt"
+                            and reopt_algos is not None
+                            and algo_name not in reopt_algos
+                        ):
+                            continue
+                        exec_kwargs = dict(strategy_kwargs.get(strategy, {}))
                         simulator = DynamicNetworkSimulator(instance, seed=sim_seed)
                         execution = execute_dynamic(
                             instance,
                             simulator,
                             fn,
                             solver_kwargs=kwargs,
-                            reoptimize_at_depot=(strategy == "reopt"),
+                            strategy=strategy,
+                            **exec_kwargs,
                         )
                         results.append(
                             {
@@ -73,7 +90,10 @@ def run_dynamic_benchmark(
                                 "realized_cost": execution.realized_cost,
                                 "reoptimizations": execution.reoptimizations,
                                 "solver_time": execution.solver_time,
+                                "dijkstra_time": execution.dijkstra_time,
                                 "steps": execution.total_steps,
+                                "depot_replans": execution.depot_replans,
+                                "reactive_repairs": execution.reactive_repairs,
                             }
                         )
 
@@ -152,6 +172,17 @@ def plot_dynamic_gain(
     Un gain positif signifie que la re-optimisation reduit le cout realise.
     """
 
+    return _plot_dynamic_gain_vs_strategy(results, compared_strategy="reopt", title=title)
+
+
+def _plot_dynamic_gain_vs_strategy(
+    results: list[DynamicBenchmarkRow],
+    *,
+    compared_strategy: str,
+    title: str,
+) -> plt.Figure:
+    """Boxplot du gain relatif ``(fixed - strategy) / fixed`` par taille x algo."""
+
     sizes = _ordered_unique([r["size"] for r in results])
     algos = _ordered_unique([r["algo"] for r in results])
     palette = _algo_palette(algos)
@@ -162,16 +193,24 @@ def plot_dynamic_gain(
         for r in results
         if r["strategy"] == "fixed"
     }
-    reopt = {
+    compared = {
         (r["size"], r["algo"], r["instance_seed"], r["sim_seed"]): r["realized_cost"]
         for r in results
-        if r["strategy"] == "reopt"
+        if r["strategy"] == compared_strategy
     }
     for key in fixed:
-        if key in reopt and fixed[key] > 0:
-            gain_lookup[key] = 100.0 * (fixed[key] - reopt[key]) / fixed[key]
+        if key in compared and fixed[key] > 0:
+            gain_lookup[key] = 100.0 * (fixed[key] - compared[key]) / fixed[key]
 
     fig, ax = plt.subplots(figsize=(10, 6))
+    if not gain_lookup:
+        ax.set_title(title)
+        ax.set_xlabel("Taille du graphe (n)")
+        ax.set_ylabel("Gain relatif (%)")
+        ax.text(0.5, 0.5, "Aucune comparaison exploitable", ha="center", va="center", transform=ax.transAxes)
+        fig.tight_layout()
+        return fig
+
     width = 0.8 / max(len(algos), 1)
 
     for a_idx, algo in enumerate(algos):
@@ -202,6 +241,19 @@ def plot_dynamic_gain(
     ax.legend(handles, algos, loc="best", frameon=True)
     fig.tight_layout()
     return fig
+
+
+def plot_dynamic_reactive_gain(
+    results: list[DynamicBenchmarkRow],
+    *,
+    title: str = "Gain de la strategie reactive vs plan fige (%)",
+) -> plt.Figure:
+    """Boxplot du gain relatif (fixed - reactive) / fixed par taille x algo.
+
+    Un gain positif signifie que la strategie reactive reduit le cout realise.
+    """
+
+    return _plot_dynamic_gain_vs_strategy(results, compared_strategy="reactive", title=title)
 
 
 def plot_dynamic_planned_vs_realized(
@@ -248,7 +300,7 @@ def save_dynamic_benchmark_figures(
     directory: Path | str | None = None,
     dpi: int = 120,
 ) -> dict[str, Path]:
-    """Sauvegarde les 3 figures de benchmark dynamique avec index auto-incremente."""
+    """Sauvegarde les 4 figures de benchmark dynamique avec index auto-incremente."""
 
     target = Path(directory) if directory is not None else DEFAULT_IMAGE_DIR
     target.mkdir(parents=True, exist_ok=True)
@@ -257,7 +309,7 @@ def save_dynamic_benchmark_figures(
     prefix = "dynamic"
     while any(
         (target / f"{prefix}_{suffix}_{index}.png").exists()
-        for suffix in ("cost", "gain", "scatter")
+        for suffix in ("cost", "gain", "reactive_gain", "scatter")
     ):
         index += 1
 
@@ -265,6 +317,7 @@ def save_dynamic_benchmark_figures(
     for suffix, builder in (
         ("cost", plot_dynamic_cost_comparison),
         ("gain", plot_dynamic_gain),
+        ("reactive_gain", plot_dynamic_reactive_gain),
         ("scatter", plot_dynamic_planned_vs_realized),
     ):
         fig = builder(results)
@@ -290,7 +343,10 @@ def summarize_dynamic_benchmark(
         realized = [r["realized_cost"] for r in rows]
         planned = [r["planned_cost"] for r in rows]
         times = [r["solver_time"] for r in rows]
+        dijkstra_times = [r["dijkstra_time"] for r in rows]
         reopt = [r["reoptimizations"] for r in rows]
+        depot_replans = [r.get("depot_replans", 0) for r in rows]
+        reactive_repairs = [r.get("reactive_repairs", 0) for r in rows]
         summary.append(
             {
                 "size": size,
@@ -302,7 +358,10 @@ def summarize_dynamic_benchmark(
                 "realized_min": min(realized),
                 "realized_max": max(realized),
                 "solver_time_mean": sum(times) / len(times),
+                "dijkstra_time_mean": sum(dijkstra_times) / len(dijkstra_times),
                 "reoptimizations_mean": sum(reopt) / len(reopt),
+                "depot_replans_mean": sum(depot_replans) / len(depot_replans),
+                "reactive_repairs_mean": sum(reactive_repairs) / len(reactive_repairs),
             }
         )
     return summary

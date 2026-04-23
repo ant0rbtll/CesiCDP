@@ -330,6 +330,7 @@ class DynamicGraphSnapshot:
     residual_costs: list[list[float]]
     completed_costs: list[list[float]]
     completed_paths: dict[tuple[int, int], list[int]]
+    shortest_paths_time: float = 0.0
 
     def edge_cost(self, u: int, v: int) -> float:
         key = (min(u, v), max(u, v))

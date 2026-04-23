@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import random
+import time
 
 from .dynamic_costs import initialize_dynamic_edge_costs, sample_dynamic_edge_cost
 from .metric_closure import EdgeKey, build_cost_matrix, complete_graph_with_shortest_paths
@@ -69,10 +70,12 @@ class DynamicNetworkSimulator:
     ) -> DynamicGraphSnapshot:
         active_edge_costs = active_edge_costs_from_availability(edge_costs, edge_availability)
         residual_costs = build_cost_matrix(self.instance.node_count, active_edge_costs)
+        shortest_paths_started = time.perf_counter()
         completed_costs, completed_paths = complete_graph_with_shortest_paths(
             self.instance.node_count,
             active_edge_costs,
         )
+        shortest_paths_time = time.perf_counter() - shortest_paths_started
         return DynamicGraphSnapshot(
             step=step,
             edge_costs=edge_costs,
@@ -80,6 +83,7 @@ class DynamicNetworkSimulator:
             residual_costs=residual_costs,
             completed_costs=completed_costs,
             completed_paths=completed_paths,
+            shortest_paths_time=shortest_paths_time,
         )
 
 
