@@ -1,29 +1,68 @@
+/* GENERATED_THEME_VARS_START */
 :root {
   --color-primary: #1F2937;
+  --color-primary-hover: #374151;
+  --color-primary-dark: #111827;
+  --color-primary-light: #4B5563;
   --color-accent: #0EA5E9;
+  --color-accent-hover: #0284C7;
+  --color-accent-dark: #0369A1;
+  --color-accent-soft: #E0F2FE;
+  --color-accent-muted: #7DD3FC;
   --color-success: #10B981;
+  --color-success-light: #D1FAE5;
+  --color-success-hover: #059669;
   --color-error: #EF4444;
+  --color-error-light: #FEE2E2;
+  --color-error-hover: #DC2626;
   --color-warning: #F59E0B;
-
+  --color-warning-light: #FEF3C7;
+  --color-warning-hover: #D97706;
   --color-bg: #F8FAFC;
+  --color-bg-secondary: #F1F5F9;
   --color-surface: #FFFFFF;
+  --color-surface-soft: #F8FAFC;
   --color-surface-alt: #F1F5F9;
-  --color-border: #CBD5E1;
+  --color-surface-hover: #F0F9FF;
+  --color-border: #E2E8F0;
+  --color-border-dark: #CBD5E1;
+  --color-border-light: #F1F5F9;
+  --color-divider: #E5E7EB;
   --color-text: #1F2937;
-  --color-text-dim: #6B7280;
+  --color-text-secondary: #6B7280;
+  --color-text-dim: #9CA3AF;
+  --color-text-disabled: #D1D5DB;
   --color-text-inverse: #FFFFFF;
-
   --color-console-bg: #0F172A;
   --color-console-text: #E2E8F0;
+  --color-console-border: #1E293B;
   --color-map-bg: #1A1A2E;
   --color-map-network: #2A2A4A;
-  --color-map-text-soft: #E8E8E8;
+  --color-map-text: #E8E8E8;
   --color-map-panel: rgba(20, 20, 40, 0.8);
+  --color-empty-text: #6B7280;
+  --color-free: #4A9EBF;
+  --color-surcharged: #F0AD4E;
+  --color-forbidden: #C1121F;
+  --color-transit: #888888;
+  --color-transit-border: #555555;
+  --color-depot: #F0AD4E;
+  --color-depot-text: #000000;
+  --color-light: #FFFFFF;
+  --color-dark: #000000;
+  --color-transparent: rgba(0, 0, 0, 0);
+  --color-bg-plot: #1A1A2E;
+  --color-font-light: #E8E8E8;
+  --color-legend-bg: rgba(20, 20, 40, 0.8);
   --color-neutral-strong: #555555;
   --color-neutral-mid: #888888;
-  --color-dark: #000000;
-  --color-light: #FFFFFF;
+  --color-map-free: #4A9EBF;
+  --color-map-surcharged: #F0AD4E;
+  --color-map-forbidden: #D9534F;
+}
+/* GENERATED_THEME_VARS_END */
 
+:root {
   --font-main: "Segoe UI", system-ui, sans-serif;
   --font-mono: "Menlo", Consolas, monospace;
 
@@ -180,11 +219,28 @@ select {
   gap: var(--space-xs);
 }
 
+.radio-inline {
+  display: flex;
+  gap: var(--space-md);
+  flex-wrap: wrap;
+}
+
+.radio-inline label {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2xs);
+  color: var(--color-text);
+}
+
 .action-row {
   display: grid;
   gap: var(--space-md);
   grid-template-columns: 1fr auto;
   align-items: center;
+}
+
+.field-hidden {
+  display: none;
 }
 
 .btn {
@@ -300,6 +356,44 @@ select {
   min-height: var(--graph-height);
 }
 
+.generation-graph-shell {
+  gap: var(--space-md);
+}
+
+.generation-graph-header {
+  display: flex;
+  gap: var(--space-md);
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+}
+
+.generation-graph-actions {
+  display: flex;
+  gap: var(--space-sm);
+}
+
+.generation-graph-body {
+  height: clamp(28rem, 68vh, 44rem);
+  min-height: 28rem;
+}
+
+.generation-graph-shell-expanded {
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.14);
+}
+
+.generation-graph-shell-expanded .generation-graph-body {
+  height: calc(100vh - 12rem);
+  min-height: 42rem;
+}
+
+.generation-graph-body .dash-graph,
+.generation-graph-body .js-plotly-plot,
+.generation-graph-body .plot-container,
+.generation-graph-body .svg-container {
+  height: 100% !important;
+}
+
 .map-wrapper,
 .map-canvas {
   min-height: var(--map-height);
@@ -348,6 +442,16 @@ select {
   .graph-grid,
   .action-row {
     grid-template-columns: 1fr;
+  }
+
+  .generation-graph-body {
+    height: 24rem;
+    min-height: 24rem;
+  }
+
+  .generation-graph-shell-expanded .generation-graph-body {
+    height: 80vh;
+    min-height: 30rem;
   }
 
   .quartier-controls-row {

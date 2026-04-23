@@ -35,6 +35,8 @@ except Exception:
     CONTEXTILY_AVAILABLE = False
 
 from components.log_console import LOG_STORE, render_log_lines
+from services import validate_quartier_payload, validate_quartier_simulation_payload
+from theme import ANIMATION_COLORS, PALETTE
 
 _MAX_LOG_LINES = 800
 _LOG_HISTORY: list[dict[str, str]] = []
@@ -44,25 +46,6 @@ ALGO_MAP = {
     "tabu_search": ("cesipath.algorithms.tabu_search", "tabu_search"),
     "simulated_annealing": ("cesipath.algorithms.simulated_annealing", "simulated_annealing"),
     "genetic_algorithm": ("cesipath.algorithms.genetic", "genetic_algorithm"),
-}
-
-ANIMATION_COLORS = {
-    "bg_network": "#2A2A4A",
-    "route": "#1F4F8B",
-    "client_default": "#8ECAE6",
-    "client_delivered": "#1F4F8B",
-    "depot": "#F0AD4E",
-    "truck": "#FFD700",
-    "black": "#000000",
-    "light": "#FFFFFF",
-    "plot_bg": "#1A1A2E",
-    "font_light": "#E8E8E8",
-    "warn": "#F0AD4E",
-    "traffic_low": "#2ECC71",
-    "traffic_mid": "#F1C40F",
-    "traffic_high": "#F39C12",
-    "traffic_max": "#E74C3C",
-    "forbidden": "#C1121F",
 }
 
 ANIMATION_SIZES = {
@@ -91,42 +74,6 @@ def _render_logs() -> list[html.Div]:
         if len(_LOG_HISTORY) > _MAX_LOG_LINES:
             del _LOG_HISTORY[:-_MAX_LOG_LINES]
     return render_log_lines(_LOG_HISTORY)
-
-
-def _parse_distance(distance_raw: Any) -> float:
-    if distance_raw is None or str(distance_raw).strip() == "":
-        raise ValueError("distance vide")
-
-    try:
-        distance = float(distance_raw)
-    except Exception as exc:
-        raise ValueError("distance invalide") from exc
-
-    if distance <= 0:
-        raise ValueError("distance doit etre > 0")
-
-    return distance
-
-
-def _validate_quartier_payload(payload: dict[str, Any]) -> tuple[str, float]:
-    place = str(payload.get("place", "")).strip()
-    if not place:
-        raise ValueError("lieu vide")
-
-    distance = _parse_distance(payload.get("distance_raw"))
-    return place, distance
-
-
-def _parse_positive_int(name: str, value: Any, *, min_value: int = 0) -> int:
-    if value is None or str(value).strip() == "":
-        raise ValueError(f"{name} obligatoire")
-    try:
-        parsed = int(value)
-    except Exception as exc:
-        raise ValueError(f"{name} invalide") from exc
-    if parsed < min_value:
-        raise ValueError(f"{name} doit etre >= {min_value}")
-    return parsed
 
 
 def _mix_hex_color(color_a: str, color_b: str, factor: float) -> str:
@@ -658,9 +605,9 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
         payload = dict(store_data or {})
 
         try:
-            place, distance = _validate_quartier_payload(payload)
-        except Exception as exc:
-            _enqueue_log("error", f"Parametres OSM invalides : {str(exc)}")
+            place, distance = validate_quartier_payload(payload)
+        except ValueError as exc:
+            _enqueue_log("error", f"Parametres OSM invalides : {exc}")
             payload["status"] = "error"
             payload["session_id"] = None
             return payload
@@ -720,13 +667,21 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
             return no_update, no_update, no_update
 
         try:
-            capacity = _parse_positive_int("capacity", capacity_raw, min_value=1)
-            seed = _parse_positive_int("seed", seed_raw, min_value=0)
-            max_clients = _parse_positive_int("max_clients", max_clients_raw, min_value=1)
-            if algo_name not in ALGO_MAP:
-                raise ValueError("algo invalide")
-        except Exception as exc:
-            _enqueue_log("error", f"Parametres simulation invalides : {str(exc)}")
+            simulation_payload = validate_quartier_simulation_payload(
+                payload={
+                    "algo_name": algo_name,
+                    "capacity": capacity_raw,
+                    "seed": seed_raw,
+                    "max_clients": max_clients_raw,
+                },
+                allowed_algorithms=set(ALGO_MAP),
+            )
+            capacity = int(simulation_payload["capacity"])
+            seed = int(simulation_payload["seed"])
+            max_clients = int(simulation_payload["max_clients"])
+            algo_name = str(simulation_payload["algo_name"])
+        except ValueError as exc:
+            _enqueue_log("error", f"Parametres simulation invalides : {exc}")
             return no_update, no_update, no_update
 
         session_id = data.get("session_id")
@@ -997,10 +952,10 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
             client_nodes = nodes[1:]
             if truck_png_available:
                 truck_marker = {
-                    "color": "rgba(0,0,0,0)",
+                    "color": PALETTE["transparent"],
                     "size": 1,
                     "symbol": "circle",
-                    "line": {"color": "rgba(0,0,0,0)", "width": 0},
+                    "line": {"color": PALETTE["transparent"], "width": 0},
                     "opacity": 0.0,
                 }
             else:
@@ -1245,8 +1200,8 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
             data=frames[0].data if frames else [],
             frames=frames,
             layout=go.Layout(
-                paper_bgcolor="rgba(0,0,0,0)",
-                plot_bgcolor="rgba(0,0,0,0)" if basemap_overlay is not None else ANIMATION_COLORS["plot_bg"],
+                paper_bgcolor=PALETTE["transparent"],
+                plot_bgcolor=PALETTE["transparent"] if basemap_overlay is not None else ANIMATION_COLORS["plot_bg"],
                 font={"family": "Segoe UI, system-ui", "color": ANIMATION_COLORS["font_light"]},
                 xaxis={
                     "showgrid": False,
@@ -1385,8 +1340,8 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
                         "width": "260px",
                         "flex": "0 0 260px",
                         "alignSelf": "stretch",
-                        "background": "#20223A",
-                        "border": "1px solid #2F4060",
+                        "background": PALETTE["map_panel"],
+                        "border": f"1px solid {PALETTE['border_dark']}",
                         "borderRadius": "8px",
                         "padding": "12px",
                     },

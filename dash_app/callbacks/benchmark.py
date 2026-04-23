@@ -16,7 +16,7 @@ from cesipath.algorithms.genetic import genetic_algorithm
 from cesipath.algorithms.grasp import grasp
 from cesipath.algorithms.simulated_annealing import simulated_annealing
 from cesipath.algorithms.tabu_search import tabu_search
-from gui.services import parse_int_list
+from services import int_list_validator, positive_int_validator, validate_benchmark_payload
 
 from components.log_console import LOG_STORE, render_log_lines
 
@@ -31,6 +31,9 @@ ALGO_COLORS = ["#4A9EBF", "#5CB85C", "#F0AD4E", "#D9534F"]
 
 _MAX_LOG_LINES = 800
 _LOG_HISTORY: list[dict[str, str]] = []
+_SIZES_VALIDATOR = int_list_validator("Tailles")
+_SEEDS_VALIDATOR = int_list_validator("Seeds")
+_SEED_COUNT_VALIDATOR = positive_int_validator("Nombre de seeds")
 
 
 def _enqueue_log(level: str, message: str) -> None:
@@ -61,6 +64,7 @@ def _placeholder_figure(title: str) -> go.Figure:
                 "x": 0.5,
                 "y": 0.5,
                 "showarrow": False,
+                "font": {"color": "#000000"},
             }
         ],
     )
@@ -85,7 +89,7 @@ def _apply_common_layout(fig: go.Figure) -> go.Figure:
     fig.update_layout(
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font={"family": "Segoe UI, system-ui, sans-serif", "color": "#E8E8E8"},
+        font={"family": "Segoe UI, system-ui, sans-serif", "color": "#000000"},
         legend={"bgcolor": "rgba(0,0,0,0)"},
     )
     return fig
@@ -211,6 +215,8 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
         verbose: bool,
     ) -> None:
         try:
+            _enqueue_log("info", f"Seeds utilisees: {', '.join(str(seed) for seed in seeds)}")
+            _enqueue_log("info", f"Instances generees: {len(sizes) * len(seeds)}")
             for algo in algos:
                 _enqueue_log("running", f"Demarrage algo {algo}...")
 
@@ -234,6 +240,7 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
             save_benchmark_figures(results, directory=target_dir)
 
             session_cache[session_id]["benchmark_results"] = results
+            session_cache[session_id]["resolved_seeds"] = list(seeds)
             session_cache[session_id]["status"] = "done"
             _enqueue_log("success", f"Benchmark termine: {len(results)} executions")
         except Exception as exc:
@@ -245,7 +252,9 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
     @app.callback(
         Output("store-benchmark", "data", allow_duplicate=True),
         Input("benchmark-sizes", "value"),
+        Input("benchmark-seed-mode", "value"),
         Input("benchmark-seeds", "value"),
+        Input("benchmark-seed-count", "value"),
         Input("benchmark-output-dir", "value"),
         Input("benchmark-algorithms", "value"),
         Input("benchmark-verbose", "value"),
@@ -254,7 +263,9 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
     )
     def sync_store_from_form(
         sizes_raw: str,
+        seed_mode: str,
         seeds_raw: str,
+        seed_count: Any,
         output_dir: str,
         algorithms: list[str],
         verbose_values: list[str],
@@ -265,11 +276,23 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
             return no_update
 
         data["sizes_raw"] = sizes_raw
+        data["seed_mode"] = seed_mode
         data["seeds_raw"] = seeds_raw
+        data["seed_count"] = seed_count
         data["output_dir"] = output_dir
         data["algorithms"] = list(algorithms or [])
         data["verbose"] = "verbose" in (verbose_values or [])
         return data
+
+    @app.callback(
+        Output("benchmark-seeds-field", "className"),
+        Output("benchmark-seed-count-field", "className"),
+        Input("benchmark-seed-mode", "value"),
+    )
+    def sync_seed_mode_fields(seed_mode: str) -> tuple[str, str]:
+        if seed_mode == "random_count":
+            return "field full field-hidden", "field full"
+        return "field full", "field full field-hidden"
 
     @app.callback(
         Output("store-benchmark", "data", allow_duplicate=True),
@@ -287,29 +310,44 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
         payload = dict(store_data or {})
 
         try:
-            sizes = parse_int_list(str(payload.get("sizes_raw", "")), field_name="Tailles")
-            seeds = parse_int_list(str(payload.get("seeds_raw", "")), field_name="Seeds")
+            seed_mode = str(payload.get("seed_mode", "manual"))
+            sizes_ok, sizes_msg = _SIZES_VALIDATOR(payload.get("sizes_raw", ""))
+            if not sizes_ok:
+                raise ValueError(sizes_msg)
+            if seed_mode == "random_count":
+                count_ok, count_msg = _SEED_COUNT_VALIDATOR(payload.get("seed_count", ""))
+                if not count_ok:
+                    raise ValueError(count_msg)
+            else:
+                seeds_ok, seeds_msg = _SEEDS_VALIDATOR(payload.get("seeds_raw", ""))
+                if not seeds_ok:
+                    raise ValueError(seeds_msg)
+
+            validated_payload = validate_benchmark_payload(payload)
+            sizes = validated_payload["sizes"]
+            seeds = validated_payload["seeds"]
+            seed_mode = validated_payload["seed_mode"]
+            seed_count = validated_payload["seed_count"]
+            output_value = validated_payload["output_dir"]
+            verbose = validated_payload["verbose"]
 
             selected_algorithms = [
-                algo
-                for algo in payload.get("algorithms", [])
-                if algo in ALGO_FUNCTIONS
+                algo for algo in validated_payload["algorithms"] if algo in ALGO_FUNCTIONS
             ]
             if not selected_algorithms:
-                raise ValueError("Selectionner au moins un algorithme")
-
-            output_value = str(payload.get("output_dir", "")).strip()
-            if not output_value:
-                raise ValueError("Dossier de sortie invalide")
-
-            verbose = bool(payload.get("verbose", False))
+                raise ValueError(
+                    "Algorithms: select at least one algorithm from the supported list."
+                )
         except Exception as exc:
             _enqueue_log("error", str(exc))
             return {
                 "status": "error",
                 "session_id": None,
                 "sizes_raw": payload.get("sizes_raw", ""),
+                "seed_mode": payload.get("seed_mode", "manual"),
                 "seeds_raw": payload.get("seeds_raw", ""),
+                "seed_count": payload.get("seed_count", 4),
+                "resolved_seeds": payload.get("resolved_seeds", []),
                 "output_dir": payload.get("output_dir", ""),
                 "algorithms": payload.get("algorithms", []),
                 "verbose": bool(payload.get("verbose", False)),
@@ -319,6 +357,7 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
         session_cache[session_id] = {
             "status": "running",
             "benchmark_results": None,
+            "resolved_seeds": list(seeds),
             "error": None,
         }
 
@@ -335,7 +374,10 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
             "status": "running",
             "session_id": session_id,
             "sizes_raw": payload.get("sizes_raw", ""),
+            "seed_mode": seed_mode,
             "seeds_raw": payload.get("seeds_raw", ""),
+            "seed_count": seed_count,
+            "resolved_seeds": list(seeds),
             "output_dir": output_value,
             "algorithms": selected_algorithms,
             "verbose": verbose,
@@ -399,6 +441,7 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
                 current_status = data.get("status")
                 if status == "done" and current_status != "done":
                     data["status"] = "done"
+                    data["resolved_seeds"] = session_state.get("resolved_seeds", data.get("resolved_seeds", []))
                     next_store = data
                 elif status == "error" and current_status != "error":
                     data["status"] = "error"

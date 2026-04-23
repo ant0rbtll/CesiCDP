@@ -15,18 +15,17 @@ from cesipath.models import EdgeStatus, GraphGenerationConfig, GraphInstance
 from cesipath.solver_input import build_static_solver_input
 
 from components.log_console import LOG_STORE, render_log_lines
+from services import float_validator, positive_int_validator, validate_generation_payload
 
 _MAX_LOG_LINES = 800
 _LOG_HISTORY: list[dict[str, str]] = []
-
-
-class FieldValidationError(ValueError):
-    """Erreur de validation de champ formulaire."""
-
-    def __init__(self, field_name: str, reason: str) -> None:
-        super().__init__(f"{field_name}: {reason}")
-        self.field_name = field_name
-        self.reason = reason
+_NODE_COUNT_VALIDATOR = positive_int_validator("node_count")
+_SIGMA_VALIDATOR = float_validator("dynamic_sigma")
+_MEAN_REVERSION_VALIDATOR = float_validator("dynamic_mean_reversion_strength")
+_MAX_MULTIPLIER_VALIDATOR = float_validator("dynamic_max_multiplier")
+_FORBID_PROB_VALIDATOR = float_validator("dynamic_forbid_probability")
+_RESTORE_PROB_VALIDATOR = float_validator("dynamic_restore_probability")
+_MAX_DISABLED_RATIO_VALIDATOR = float_validator("dynamic_max_disabled_ratio")
 
 
 def _enqueue_log(level: str, message: str) -> None:
@@ -46,9 +45,10 @@ def _placeholder_figure() -> go.Figure:
     fig = go.Figure()
     fig.update_layout(
         title="Instance VRP - aucun resultat",
+        autosize=True,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font={"family": "Segoe UI, system-ui, sans-serif", "color": "#E8E8E8"},
+        font={"family": "Segoe UI, system-ui, sans-serif", "color": "#000000"},
         legend={"bgcolor": "rgba(0,0,0,0)"},
         xaxis={"visible": False},
         yaxis={"visible": False},
@@ -61,117 +61,28 @@ def _placeholder_figure() -> go.Figure:
                 "x": 0.5,
                 "y": 0.5,
                 "showarrow": False,
+                "font": {"color": "#000000"},
             }
         ],
     )
     return fig
 
 
-def _is_int_like(value: Any) -> bool:
-    if isinstance(value, bool):
-        return False
-    if isinstance(value, int):
-        return True
-    if isinstance(value, float):
-        return value.is_integer()
-    text = str(value).strip()
-    if text == "":
-        return False
-    if text.startswith("+"):
-        text = text[1:]
-    return text.isdigit()
-
-
-def _parse_int(value: Any, field_name: str, *, minimum: int) -> int:
-    if value is None or str(value).strip() == "":
-        raise FieldValidationError(field_name, "valeur obligatoire")
-    if not _is_int_like(value):
-        raise FieldValidationError(field_name, "doit etre un entier")
-
-    parsed = int(float(value))
-    if parsed < minimum:
-        raise FieldValidationError(field_name, f"doit etre >= {minimum}")
-    return parsed
-
-
-def _parse_float(
-    value: Any,
-    field_name: str,
-    *,
-    minimum: float | None = None,
-    maximum: float | None = None,
-    min_strict: bool = False,
-) -> float:
-    if value is None or str(value).strip() == "":
-        raise FieldValidationError(field_name, "valeur obligatoire")
-
-    try:
-        parsed = float(value)
-    except Exception as exc:
-        raise FieldValidationError(field_name, "doit etre un nombre") from exc
-
-    if minimum is not None:
-        if min_strict and parsed <= minimum:
-            raise FieldValidationError(field_name, f"doit etre > {minimum}")
-        if not min_strict and parsed < minimum:
-            raise FieldValidationError(field_name, f"doit etre >= {minimum}")
-
-    if maximum is not None and parsed > maximum:
-        raise FieldValidationError(field_name, f"doit etre <= {maximum}")
-
-    return parsed
-
-
-def _validate_generation_payload(payload: dict[str, Any]) -> dict[str, Any]:
-    node_count = _parse_int(payload.get("node_count"), "node_count", minimum=3)
-    seed = _parse_int(payload.get("seed"), "seed", minimum=0)
-    dynamic_sigma = _parse_float(
-        payload.get("dynamic_sigma"),
-        "dynamic_sigma",
-        minimum=0.0,
-        min_strict=True,
+def _first_form_validation_error(payload: dict[str, Any]) -> str | None:
+    checks = (
+        (_NODE_COUNT_VALIDATOR, payload.get("node_count")),
+        (_SIGMA_VALIDATOR, payload.get("dynamic_sigma")),
+        (_MEAN_REVERSION_VALIDATOR, payload.get("dynamic_mean_reversion_strength")),
+        (_MAX_MULTIPLIER_VALIDATOR, payload.get("dynamic_max_multiplier")),
+        (_FORBID_PROB_VALIDATOR, payload.get("dynamic_forbid_probability")),
+        (_RESTORE_PROB_VALIDATOR, payload.get("dynamic_restore_probability")),
+        (_MAX_DISABLED_RATIO_VALIDATOR, payload.get("dynamic_max_disabled_ratio")),
     )
-    dynamic_mean_reversion_strength = _parse_float(
-        payload.get("dynamic_mean_reversion_strength"),
-        "dynamic_mean_reversion_strength",
-        minimum=0.0,
-        maximum=1.0,
-        min_strict=True,
-    )
-    dynamic_max_multiplier = _parse_float(
-        payload.get("dynamic_max_multiplier"),
-        "dynamic_max_multiplier",
-        minimum=1.0,
-    )
-    dynamic_forbid_probability = _parse_float(
-        payload.get("dynamic_forbid_probability"),
-        "dynamic_forbid_probability",
-        minimum=0.0,
-        maximum=1.0,
-    )
-    dynamic_restore_probability = _parse_float(
-        payload.get("dynamic_restore_probability"),
-        "dynamic_restore_probability",
-        minimum=0.0,
-        maximum=1.0,
-    )
-    dynamic_max_disabled_ratio = _parse_float(
-        payload.get("dynamic_max_disabled_ratio"),
-        "dynamic_max_disabled_ratio",
-        minimum=0.0,
-        maximum=1.0,
-    )
-
-    return {
-        "node_count": node_count,
-        "seed": seed,
-        "dynamic_sigma": dynamic_sigma,
-        "dynamic_mean_reversion_strength": dynamic_mean_reversion_strength,
-        "dynamic_max_multiplier": dynamic_max_multiplier,
-        "dynamic_forbid_probability": dynamic_forbid_probability,
-        "dynamic_restore_probability": dynamic_restore_probability,
-        "dynamic_max_disabled_ratio": dynamic_max_disabled_ratio,
-    }
+    for validator, value in checks:
+        is_valid, message = validator(value)
+        if not is_valid:
+            return message
+    return None
 
 
 def generate_graph(
@@ -275,9 +186,10 @@ def _build_instance_figure(instance: GraphInstance) -> go.Figure:
     node_count = len(nodes_list)
     fig.update_layout(
         title=f"Instance VRP - {node_count} noeuds",
+        autosize=True,
         paper_bgcolor="rgba(0,0,0,0)",
         plot_bgcolor="rgba(0,0,0,0)",
-        font={"family": "Segoe UI, system-ui, sans-serif", "color": "#E8E8E8"},
+        font={"family": "Segoe UI, system-ui, sans-serif", "color": "#000000"},
         legend={"bgcolor": "rgba(0,0,0,0)"},
         xaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
         yaxis={"showgrid": False, "zeroline": False, "showticklabels": False},
@@ -379,10 +291,17 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
             raise PreventUpdate
 
         payload = dict(store_data or {})
+        first_error = _first_form_validation_error(payload)
+        if first_error:
+            _enqueue_log("error", f"Champ invalide : {first_error}")
+            payload["status"] = "error"
+            payload["session_id"] = None
+            return payload
+
         try:
-            validated = _validate_generation_payload(payload)
-        except FieldValidationError as exc:
-            _enqueue_log("error", f"Champ invalide : {exc.field_name} — {exc.reason}")
+            validated = validate_generation_payload(payload)
+        except ValueError as exc:
+            _enqueue_log("error", f"Champ invalide : {exc}")
             payload["status"] = "error"
             payload["session_id"] = None
             return payload
@@ -441,6 +360,17 @@ def register_callbacks(app, session_cache: dict[str, Any], background_callback_m
         if status == "running":
             return True, "Génération en cours..."
         return False, "Générer"
+
+    @app.callback(
+        Output("generation-graph-shell", "className"),
+        Output("generation-graph-toggle", "children"),
+        Input("generation-graph-toggle", "n_clicks"),
+    )
+    def sync_graph_display_mode(n_clicks: int | None) -> tuple[str, str]:
+        expanded = bool(n_clicks and n_clicks % 2 == 1)
+        if expanded:
+            return "card generation-graph-shell generation-graph-shell-expanded", "Réduire le graphe"
+        return "card generation-graph-shell", "Agrandir le graphe"
 
     @app.callback(
         Output("log-output-generation", "children"),

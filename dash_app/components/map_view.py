@@ -10,6 +10,7 @@ from dash import dcc, html
 import numpy as np
 from PIL import Image
 import plotly.graph_objects as go
+from theme import PALETTE as MAP_COLORS
 
 try:
     import contextily as ctx
@@ -24,21 +25,6 @@ except Exception:
     CONTEXTILY_AVAILABLE = False
 
 _SESSION_CACHE: dict[str, Any] = {}
-
-MAP_COLORS = {
-    "empty_text": "#6B7280",
-    "free": "#4A9EBF",
-    "surcharged": "#F0AD4E",
-    "forbidden": "#D9534F",
-    "transit": "#888888",
-    "transit_border": "#555555",
-    "depot": "#F0AD4E",
-    "depot_text": "#000000",
-    "light": "#FFFFFF",
-    "bg_plot": "#1A1A2E",
-    "font_light": "#E8E8E8",
-    "legend_bg": "rgba(20,20,40,0.8)",
-}
 
 MAP_SIZES = {
     "edge_free": 1.5,
@@ -286,8 +272,8 @@ def build_map(session_id: str | None):
         ]
     )
     fig.update_layout(
-        paper_bgcolor="rgba(0,0,0,0)",
-        plot_bgcolor="rgba(0,0,0,0)" if basemap_overlay is not None else MAP_COLORS["bg_plot"],
+        paper_bgcolor=MAP_COLORS["transparent"],
+        plot_bgcolor=MAP_COLORS["transparent"] if basemap_overlay is not None else MAP_COLORS["bg_plot"],
         font={"family": "Segoe UI, system-ui", "color": MAP_COLORS["font_light"]},
         xaxis={
             "showgrid": False,

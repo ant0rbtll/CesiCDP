@@ -35,6 +35,25 @@ def _benchmark_tab() -> html.Div:
                             ),
                             html.Div(
                                 [
+                                    html.Label("Mode seeds", className="field-label"),
+                                    dcc.RadioItems(
+                                        id="benchmark-seed-mode",
+                                        options=[
+                                            {"label": "Liste manuelle", "value": "manual"},
+                                            {"label": "Nombre aleatoire", "value": "random_count"},
+                                        ],
+                                        value="manual",
+                                        className="radio-inline",
+                                    ),
+                                    html.Small(
+                                        "Choisissez une liste explicite ou un nombre de seeds tirees au hasard.",
+                                        className="field-hint",
+                                    ),
+                                ],
+                                className="field",
+                            ),
+                            html.Div(
+                                [
                                     html.Label("Seeds", className="field-label"),
                                     dcc.Input(
                                         id="benchmark-seeds",
@@ -44,7 +63,27 @@ def _benchmark_tab() -> html.Div:
                                     ),
                                     html.Small("Ex: 1, 2, 3", className="field-hint"),
                                 ],
-                                className="field",
+                                id="benchmark-seeds-field",
+                                className="field full",
+                            ),
+                            html.Div(
+                                [
+                                    html.Label("Nombre de seeds", className="field-label"),
+                                    dcc.Input(
+                                        id="benchmark-seed-count",
+                                        type="number",
+                                        value=4,
+                                        min=1,
+                                        step=1,
+                                        className="input-text",
+                                    ),
+                                    html.Small(
+                                        "Ex: 4. Le serveur tirera 4 seeds uniques au hasard.",
+                                        className="field-hint",
+                                    ),
+                                ],
+                                id="benchmark-seed-count-field",
+                                className="field full field-hidden",
                             ),
                         ],
                         className="field-grid two-cols",
@@ -248,8 +287,49 @@ def _generation_tab() -> html.Div:
                 ],
                 className="card",
             ),
+            html.Div(
+                [
+                    html.Div(
+                        [
+                            html.Div(
+                                [
+                                    html.H3("Visualisation instance", className="section-title"),
+                                    html.P(
+                                        "Activez le mode etendu pour retrouver une lecture proche du popup desktop.",
+                                        className="section-hint",
+                                    ),
+                                ]
+                            ),
+                            html.Div(
+                                [
+                                    html.Button(
+                                        "Agrandir le graphe",
+                                        id="generation-graph-toggle",
+                                        n_clicks=0,
+                                        className="btn btn-primary",
+                                    )
+                                ],
+                                className="generation-graph-actions",
+                            ),
+                        ],
+                        className="generation-graph-header",
+                    ),
+                    html.Div(
+                        [
+                            dcc.Graph(
+                                id="graph-generation-instance",
+                                className="generation-graph-canvas",
+                                config={"responsive": True, "displaylogo": False},
+                                style={"height": "100%"},
+                            )
+                        ],
+                        className="generation-graph-body",
+                    ),
+                ],
+                id="generation-graph-shell",
+                className="card generation-graph-shell",
+            ),
             build_log_console(prefix="generation", title="Journal generation"),
-            dcc.Graph(id="graph-generation-instance", className="graph-card"),
         ],
         className="tab-content",
     )
@@ -484,7 +564,10 @@ def build_layout() -> html.Div:
                     "status": "idle",
                     "session_id": None,
                     "sizes_raw": "10, 15, 20",
+                    "seed_mode": "manual",
                     "seeds_raw": "1, 2, 3",
+                    "seed_count": 4,
+                    "resolved_seeds": [1, 2, 3],
                     "output_dir": "image",
                     "algorithms": [
                         "grasp",
