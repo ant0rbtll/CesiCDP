@@ -3,16 +3,18 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+import math
 from pathlib import Path
 from typing import Callable
 
+from matplotlib import colors as mcolors
 import matplotlib.image as mpimg
 import matplotlib.pyplot as plt
 from matplotlib.animation import FuncAnimation
 from matplotlib.lines import Line2D
 from matplotlib.offsetbox import AnnotationBbox, OffsetImage
 from matplotlib.text import Text
-from matplotlib.widgets import Button
+from matplotlib.widgets import Button, Slider
 
 from .algorithms.grasp import grasp
 from .algorithms.neighborhood import VRPSolution
@@ -33,6 +35,7 @@ class GraphVisualizationSession:
     fig: plt.Figure
     ax: plt.Axes
     button: Button | None = None
+    speed_slider: Slider | None = None
     solution: VRPSolution | None = None
     animation: FuncAnimation | None = None
     truck_artist: AnnotationBbox | None = None
@@ -46,6 +49,7 @@ class GraphVisualizationSession:
     legend_callback: Callable[[list[tuple[str, str, str]]], None] | None = None
     state_callback: Callable[[str], None] | None = None
     visualizer: "GraphVisualizer | None" = None
+    show_legend: bool = True
 
     def set_speed(self, multiplier: float) -> None:
         """Ajuste la vitesse de lecture du camion (1.0 = cadence par defaut)."""
@@ -55,11 +59,20 @@ class GraphVisualizationSession:
         self.speed_multiplier = multiplier
         if self.animation is None:
             return
+        new_interval = max(1, int(round(GraphVisualizer.ANIMATION_INTERVAL_MS / multiplier)))
+        # TimedAnimation._step re-applique animation._interval a chaque frame;
+        # il faut donc mettre a jour _interval en plus du timer backend.
+        if hasattr(self.animation, "_interval"):
+            self.animation._interval = new_interval
         event_source = self.animation.event_source
         if event_source is None:
             return
-        base = GraphVisualizer.ANIMATION_INTERVAL_MS
-        event_source.interval = max(1, int(round(base / multiplier)))
+        was_running = not self.animation_paused
+        if was_running:
+            event_source.stop()
+        event_source.interval = new_interval
+        if was_running:
+            event_source.start(interval=new_interval)
 
     def toggle(self) -> None:
         """Bascule lecture/pause de l'animation (API externe)."""
@@ -101,9 +114,11 @@ class GraphVisualizer:
     COST_MID_COLOR = "#f1c40f"
     COST_HIGH_COLOR = "#f39c12"
     COST_MAX_COLOR = "#e74c3c"
-    TRUCK_ZOOM = 0.12
-    ANIMATION_INTERVAL_MS = 90
-    FRAMES_PER_EDGE = 16
+    TRUCK_ZOOM = 0.1728
+    ANIMATION_INTERVAL_MS = 50
+    FRAMES_PER_EDGE = 10
+    MIN_FRAMES_PER_SUBEDGE = 1
+    MAX_FRAMES_PER_SUBEDGE = 30
     DEPOT_PAUSE_FRAMES = 0
 
     def __init__(
@@ -145,6 +160,7 @@ class GraphVisualizer:
         *,
         size: tuple[float, float] = (11, 8),
         external_controls: bool = False,
+        show_legend: bool = True,
         title_callback: Callable[[str], None] | None = None,
         info_callback: Callable[[str], None] | None = None,
         legend_callback: Callable[[list[tuple[str, str, str]]], None] | None = None,
@@ -162,11 +178,21 @@ class GraphVisualizer:
         fig, ax = plt.subplots(figsize=size)
 
         button: Button | None = None
+        speed_slider: Slider | None = None
         if external_controls:
             fig.subplots_adjust(left=0.02, right=0.995, top=0.995, bottom=0.02)
         else:
-            plt.subplots_adjust(bottom=0.16)
-            button_ax = fig.add_axes([0.82, 0.03, 0.12, 0.07])
+            fig.subplots_adjust(left=0.015, right=0.995, top=0.99, bottom=0.12)
+            speed_ax = fig.add_axes([0.10, 0.042, 0.58, 0.036])
+            speed_slider = Slider(
+                speed_ax,
+                "Vitesse camion",
+                0.5,
+                25.0,
+                valinit=3.0,
+                valstep=0.5,
+            )
+            button_ax = fig.add_axes([0.74, 0.028, 0.20, 0.072])
             button = Button(button_ax, "Start")
 
         session = GraphVisualizationSession(
@@ -177,12 +203,14 @@ class GraphVisualizer:
             fig=fig,
             ax=ax,
             button=button,
+            speed_slider=speed_slider,
             external_controls=external_controls,
             visualizer=self,
             title_callback=title_callback,
             info_callback=info_callback,
             legend_callback=legend_callback,
             state_callback=state_callback,
+            show_legend=show_legend,
         )
         self._draw_dynamic_graph(session)
 
@@ -191,7 +219,48 @@ class GraphVisualizer:
                 self.toggle_animation(session)
 
             button.on_clicked(toggle)
+        if speed_slider is not None:
+            def _on_slider_speed(value: float) -> None:
+                session.set_speed(float(value))
+
+            speed_slider.on_changed(_on_slider_speed)
+            session.set_speed(float(speed_slider.val))
+        self._maximize_figure_window(fig)
         return session
+
+    @staticmethod
+    def _maximize_figure_window(fig: plt.Figure) -> None:
+        """Essaie de maximiser la fenetre du popup matplotlib selon le backend."""
+
+        manager = getattr(fig.canvas, "manager", None)
+        if manager is None:
+            return
+        window = getattr(manager, "window", None)
+        if window is None:
+            return
+
+        for maximize_call in ("wm_state", "state", "showMaximized"):
+            try:
+                fn = getattr(window, maximize_call, None)
+                if fn is None:
+                    continue
+                if maximize_call in {"wm_state", "state"}:
+                    fn("zoomed")
+                else:
+                    fn()
+                return
+            except Exception:
+                continue
+
+        # Fallback cross-platform: occuper quasi tout l'ecran sans plein ecran strict.
+        try:
+            screen_w = int(window.winfo_screenwidth())
+            screen_h = int(window.winfo_screenheight())
+            width = max(900, int(screen_w))
+            height = max(700, int(screen_h))
+            window.geometry(f"{width}x{height}+0+0")
+        except Exception:
+            return
 
     @staticmethod
     def _set_button_label(button: Button | None, label: str) -> None:
@@ -328,22 +397,19 @@ class GraphVisualizer:
         title = self._dynamic_title(session.snapshot, session.solution)
         self._apply_axes_style(ax, title, session=session)
         legend_items = [
-            ("Cout proche base", self.COST_LOW_COLOR, "-"),
-            ("Cout intermediaire", self.COST_MID_COLOR, "-"),
-            ("Cout eleve", self.COST_HIGH_COLOR, "-"),
-            ("Cout proche max", self.COST_MAX_COLOR, "-"),
-            ("Route interdite statique", self.FORBIDDEN_EDGE_COLOR, "--"),
-            ("Route indisponible dynamique", self.TEMP_DISABLED_EDGE_COLOR, "--"),
+            ("Route interdite", self.FORBIDDEN_EDGE_COLOR, "--"),
+            ("Route indisponible", self.TEMP_DISABLED_EDGE_COLOR, "--"),
         ]
         if session.solution is not None:
-            legend_items.append(("Trajet du camion", self.ROUTE_COLOR, "-"))
-        if session.legend_callback is not None:
-            try:
-                session.legend_callback(legend_items)
-            except Exception:
-                pass
-        else:
-            self._draw_legend(ax, legend_items)
+            legend_items.insert(0, ("Trajet en cours", self.ROUTE_COLOR, "-"))
+        if session.show_legend:
+            if session.legend_callback is not None:
+                try:
+                    session.legend_callback(legend_items)
+                except Exception:
+                    pass
+            else:
+                self._draw_dynamic_legend(ax, include_route=session.solution is not None)
 
         if session.solution is not None:
             self._start_truck_animation(session)
@@ -424,13 +490,13 @@ class GraphVisualizer:
                 if len(route) >= 2
             )
             lines.append(
-                f"{solution.route_count} camion(s)   |   "
-                f"{total_clients} ville(s) a livrer   |   "
+                f"{solution.route_count} tournee(s) planifiee(s)   |   "
+                f"{total_clients} livraison(s) a effectuer   |   "
                 f"Distance planifiee : {solution.total_cost:.0f}"
             )
         lines.append(
-            f"Routes bloquees : {total_blocked}   "
-            f"(fixes : {static_blocked}   •   imprevus : {dynamic_blocked})"
+            f"Routes indisponibles : {total_blocked}   "
+            f"(structurelles : {static_blocked}   •   trafic : {dynamic_blocked})"
         )
         return "\n".join(lines)
 
@@ -600,7 +666,7 @@ class GraphVisualizer:
             ax.set_title("")
         else:
             ax.set_title(title, fontsize=13)
-        if session is not None and session.external_controls:
+        if session is not None:
             ax.set_xlabel("")
             ax.set_ylabel("")
             ax.tick_params(axis="both", which="both", length=0, labelsize=0)
@@ -627,6 +693,35 @@ class GraphVisualizer:
             for label, color, linestyle in items
         ]
         ax.legend(handles=handles, loc="upper left", frameon=True)
+
+    def _draw_dynamic_legend(self, ax: plt.Axes, *, include_route: bool) -> None:
+        """Legende simplifiee pour une lecture metier (non technique)."""
+
+        handles: list[Line2D] = []
+        if include_route:
+            handles.append(Line2D([0], [0], color=self.ROUTE_COLOR, lw=2.6, linestyle="-", label="Tournee en cours"))
+        handles.append(
+            Line2D([0], [0], color=self.FORBIDDEN_EDGE_COLOR, lw=2.2, linestyle="--", label="Route interdite")
+        )
+        handles.append(
+            Line2D([0], [0], color=self.TEMP_DISABLED_EDGE_COLOR, lw=2.2, linestyle="--", label="Route indisponible")
+        )
+        ax.legend(handles=handles, loc="upper left", frameon=True, title="Lecture rapide")
+
+        # Barre en degrade continue pour le niveau de trafic.
+        grad_ax = ax.inset_axes([0.02, 0.86, 0.28, 0.03])
+        cmap = mcolors.LinearSegmentedColormap.from_list(
+            "traffic_scale",
+            [self.COST_LOW_COLOR, self.COST_MID_COLOR, self.COST_HIGH_COLOR, self.COST_MAX_COLOR],
+        )
+        grad_ax.imshow([[0.0, 1.0]], cmap=cmap, aspect="auto", extent=(0, 1, 0, 1), interpolation="bilinear")
+        grad_ax.set_yticks([])
+        grad_ax.set_xticks([0.0, 1.0])
+        grad_ax.set_xticklabels(["Fluide", "Charge"], fontsize=8)
+        grad_ax.tick_params(axis="x", length=0, pad=1)
+        for spine in grad_ax.spines.values():
+            spine.set_visible(False)
+        grad_ax.set_title("Niveau de trafic", fontsize=8, pad=1)
 
     def _compute_dynamic_solution(self, session: GraphVisualizationSession) -> VRPSolution | None:
         """Calcule une solution dynamique via GRASP pour animer le camion."""
@@ -689,6 +784,16 @@ class GraphVisualizer:
         clone.random.setstate(simulator.random.getstate())
         return clone
 
+    def _frames_for_subedge(self, segment_len: float, ref_len: float) -> int:
+        """Calcule le nombre de frames d'un sous-segment selon sa longueur reelle."""
+
+        if segment_len <= 0:
+            return self.MIN_FRAMES_PER_SUBEDGE
+        if ref_len <= 0:
+            return self.FRAMES_PER_EDGE
+        scaled = int(round(self.FRAMES_PER_EDGE * (segment_len / ref_len)))
+        return max(self.MIN_FRAMES_PER_SUBEDGE, min(self.MAX_FRAMES_PER_SUBEDGE, scaled))
+
     def _build_truck_frames(
         self,
         session: GraphVisualizationSession,
@@ -719,6 +824,12 @@ class GraphVisualizer:
         total_edges = sum(len(route) - 1 for route in routes)
         if total_edges <= 0:
             return [], {}
+
+        xs = [coord[0] for coord in self.instance.coordinates.values()]
+        ys = [coord[1] for coord in self.instance.coordinates.values()]
+        diag = math.hypot(max(xs) - min(xs), max(ys) - min(ys)) if xs and ys else 0.0
+        # Longueur de reference pour adapter la fluidite aux segments courts/longs.
+        ref_len = diag / 12.0 if diag > 0 else 1.0
 
         preview_simulator = self._clone_simulator(self.instance, session.simulator)
         rolling_snapshot = session.snapshot
@@ -806,10 +917,12 @@ class GraphVisualizer:
                     x1, y1 = self.instance.coordinates[ru]
                     x2, y2 = self.instance.coordinates[rv]
                     dx = x2 - x1
+                    segment_len = math.hypot(x2 - x1, y2 - y1)
+                    sub_frames = self._frames_for_subedge(segment_len, ref_len)
                     is_last_sub = sub_idx == last_sub
-                    for step in range(1, self.FRAMES_PER_EDGE + 1):
-                        t = step / self.FRAMES_PER_EDGE
-                        is_real_end = step == self.FRAMES_PER_EDGE
+                    for step in range(1, sub_frames + 1):
+                        t = step / sub_frames
+                        is_real_end = step == sub_frames
                         is_logical_end = is_real_end and is_last_sub
                         frames.append(
                             (
@@ -1027,7 +1140,7 @@ class GraphVisualizer:
                 destination_label = f"ville v{logical_to}"
 
             info_msg = (
-                f"Camion {route_idx}/{route_total}   •   destination : {destination_label}\n"
+                f"Tournee {route_idx}/{route_total}   •   destination : {destination_label}\n"
                 f"Charge camion : {current_load} colis   "
                 f"(livraison {delivered_this_route}/{clients_on_truck_at_start} sur cette tournee)\n"
                 f"Villes restantes a livrer : {remaining_total}/{total_clients}"

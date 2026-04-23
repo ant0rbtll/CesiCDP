@@ -42,7 +42,6 @@ import matplotlib
 
 matplotlib.use("TkAgg")
 import matplotlib.pyplot as plt
-from matplotlib.backends.backend_tkagg import FigureCanvasTkAgg
 
 from cesipath.models import GraphGenerationConfig
 from gui.components import (
@@ -54,7 +53,6 @@ from gui.components import (
 )
 from gui.icons import create_tab_icon
 from gui.services import (
-    NETWORK_TYPES,
     build_quartier_dynamic_session,
     generate_and_build_visualizer,
     parse_float,
@@ -64,7 +62,7 @@ from gui.services import (
     run_benchmark_service,
     run_quartier_service,
 )
-from gui.theme import PALETTE, SPACING_LG, SPACING_MD, SPACING_SM, SPACING_XS, apply_theme
+from gui.theme import PALETTE, SPACING_LG, SPACING_MD, SPACING_SM, apply_theme
 
 
 def get_quartier_graph_class():
@@ -438,81 +436,81 @@ class GenerationTab(ttk.Frame):
             grid,
             0,
             0,
-            label="Nombre de noeuds",
+            label="Nombre de villes (noeuds)",
             variable=self.nodes_var,
             hint="Entier > 1",
-            tooltip="Taille du graphe genere.",
-            validator=positive_int_validator("Noeuds"),
+            tooltip="Nombre total de points du reseau a generer.",
+            validator=positive_int_validator("Nombre de villes"),
         )
         self._add_field(
             grid,
             0,
             1,
-            label="Seed",
+            label="Graine aleatoire",
             variable=self.seed_var,
             hint="Vide pour aleatoire",
-            tooltip="Seed deterministe optionnelle.",
-            validator=optional_int_validator("Seed"),
+            tooltip="Fixe la reproductibilite des instances generees.",
+            validator=optional_int_validator("Graine aleatoire"),
         )
         self._add_field(
             grid,
             1,
             0,
-            label="Sigma",
+            label="Variabilite trafic",
             variable=self.sigma_var,
-            hint="Volatilite dynamique",
-            tooltip="Ecart-type de la dynamique gaussienne.",
-            validator=float_validator("Sigma"),
+            hint="Intensite des fluctuations",
+            tooltip="Plus la valeur est grande, plus les temps de trajet varient.",
+            validator=float_validator("Variabilite trafic"),
         )
         self._add_field(
             grid,
             1,
             1,
-            label="Mean reversion",
+            label="Retour vers la normale",
             variable=self.mean_reversion_var,
-            hint="Retour vers cout statique",
-            tooltip="Force de rappel vers le cout statique.",
-            validator=float_validator("Mean reversion"),
+            hint="Stabilite dans le temps",
+            tooltip="Force de retour vers un niveau de trafic normal.",
+            validator=float_validator("Retour vers la normale"),
         )
         self._add_field(
             grid,
             2,
             0,
-            label="Max multiplier",
+            label="Pic de congestion max",
             variable=self.max_multiplier_var,
-            hint="Borne sup dynamique",
-            tooltip="Multiplicateur max du cout statique.",
-            validator=float_validator("Max multiplier"),
+            hint="Limite des ralentissements",
+            tooltip="Plafond du surcout possible par rapport au temps nominal.",
+            validator=float_validator("Pic de congestion max"),
         )
         self._add_field(
             grid,
             2,
             1,
-            label="Forbid prob",
+            label="Probabilite fermeture route",
             variable=self.forbid_prob_var,
-            hint="Prob. OFF aretes",
-            tooltip="Probabilite qu'une arete active devienne OFF.",
-            validator=float_validator("Forbid prob"),
+            hint="Incidents / blocages",
+            tooltip="Chance qu'une route devienne temporairement indisponible.",
+            validator=float_validator("Probabilite fermeture route"),
         )
         self._add_field(
             grid,
             3,
             0,
-            label="Restore prob",
+            label="Probabilite reouverture route",
             variable=self.restore_prob_var,
-            hint="Prob. restauration",
-            tooltip="Probabilite qu'une arete OFF redevienne active.",
-            validator=float_validator("Restore prob"),
+            hint="Retour a la circulation",
+            tooltip="Chance qu'une route indisponible redevienne praticable.",
+            validator=float_validator("Probabilite reouverture route"),
         )
         self._add_field(
             grid,
             3,
             1,
-            label="Max disabled ratio",
+            label="Part max routes indisponibles",
             variable=self.max_disabled_ratio_var,
-            hint="Ratio OFF max",
-            tooltip="Part maximale d'aretes OFF en dynamique.",
-            validator=float_validator("Max disabled ratio"),
+            hint="Limite de blocage global",
+            tooltip="Part maximale de routes simultanement indisponibles.",
+            validator=float_validator("Part max routes indisponibles"),
         )
 
         ttk.Separator(controls, orient="horizontal").grid(row=2, column=0, columnspan=2, sticky="ew", pady=SPACING_MD)
@@ -571,15 +569,27 @@ class GenerationTab(ttk.Frame):
                 self.log_console.log("running", "Generation de l'instance...")
 
             config = GraphGenerationConfig(
-                node_count=parse_positive_int(self.nodes_var.get(), field_name="Noeuds"),
-                seed=parse_optional_int(self.seed_var.get(), field_name="Seed"),
+                node_count=parse_positive_int(self.nodes_var.get(), field_name="Nombre de villes"),
+                seed=parse_optional_int(self.seed_var.get(), field_name="Graine aleatoire"),
                 auto_density_profile=True,
-                dynamic_sigma=parse_float(self.sigma_var.get(), field_name="Sigma"),
-                dynamic_mean_reversion_strength=parse_float(self.mean_reversion_var.get(), field_name="Mean reversion"),
-                dynamic_max_multiplier=parse_float(self.max_multiplier_var.get(), field_name="Max multiplier"),
-                dynamic_forbid_probability=parse_float(self.forbid_prob_var.get(), field_name="Forbid prob"),
-                dynamic_restore_probability=parse_float(self.restore_prob_var.get(), field_name="Restore prob"),
-                dynamic_max_disabled_ratio=parse_float(self.max_disabled_ratio_var.get(), field_name="Max disabled ratio"),
+                dynamic_sigma=parse_float(self.sigma_var.get(), field_name="Variabilite trafic"),
+                dynamic_mean_reversion_strength=parse_float(
+                    self.mean_reversion_var.get(),
+                    field_name="Retour vers la normale",
+                ),
+                dynamic_max_multiplier=parse_float(self.max_multiplier_var.get(), field_name="Pic de congestion max"),
+                dynamic_forbid_probability=parse_float(
+                    self.forbid_prob_var.get(),
+                    field_name="Probabilite fermeture route",
+                ),
+                dynamic_restore_probability=parse_float(
+                    self.restore_prob_var.get(),
+                    field_name="Probabilite reouverture route",
+                ),
+                dynamic_max_disabled_ratio=parse_float(
+                    self.max_disabled_ratio_var.get(),
+                    field_name="Part max routes indisponibles",
+                ),
             )
 
             result = generate_and_build_visualizer(config)
@@ -590,8 +600,32 @@ class GenerationTab(ttk.Frame):
                 for key, value in result.summary.items():
                     self.log_console.log("info", f"{key}: {value}")
 
+            popup_ready = {"done": False}
+
+            def _mark_ready(_: object | None = None) -> None:
+                if popup_ready["done"]:
+                    return
+                popup_ready["done"] = True
+                try:
+                    result.session.fig.canvas.mpl_disconnect(hook_id)
+                except Exception:
+                    pass
+                self._set_running(False, success=True, message="Visualizer ouvert")
+
+            hook_id = result.session.fig.canvas.mpl_connect("draw_event", _mark_ready)
+
+            def _fallback_ready() -> None:
+                if popup_ready["done"]:
+                    return
+                try:
+                    result.session.fig.canvas.mpl_disconnect(hook_id)
+                except Exception:
+                    pass
+                _mark_ready()
+
+            self.after(2500, _fallback_ready)
             plt.show(block=False)
-            self._set_running(False, success=True, message="Visualizer ouvert")
+            result.session.fig.canvas.draw_idle()
         except Exception as exc:
             details = traceback.format_exc(limit=10)
             self._set_running(False, success=False, message="Erreur generation")
@@ -606,59 +640,37 @@ class QuartierTab(ttk.Frame):
         super().__init__(master, style="App.TFrame")
 
         self.place_var = tk.StringVar(value="Place de la Concorde, Paris")
-        self.network_display_var = tk.StringVar(value="Drive")
         self.distance_var = tk.StringVar(value="600")
         self.max_clients_var = tk.StringVar(value="35")
         self.export_format_var = tk.StringVar(value="none")
-        self.preview_var = tk.StringVar(value="Apercu: Place de la Concorde, Paris | type=drive")
+        self.preview_var = tk.StringVar(value="Apercu: Place de la Concorde, Paris | mode=drive")
 
         self.place_field: LabeledEntry | None = None
         self.distance_field: LabeledEntry | None = None
         self.max_clients_field: LabeledEntry | None = None
-        self.network_combo: LabeledCombobox | None = None
         self.run_button: ColoredButton | None = None
         self.indicator: RunningIndicator | None = None
         self.log_console: LogConsole | None = None
         self._sessions: list = []
-        self._is_plot_fullscreen = False
-
-        self._plot_container: ttk.Frame | None = None
-        self._figure_canvas: FigureCanvasTkAgg | None = None
-        self._current_figure = None
-        self._controls_frame: ttk.LabelFrame | None = None
-        self._log_frame: ttk.LabelFrame | None = None
-        self._plot_frame: ttk.LabelFrame | None = None
-        self._plot_mode_button: ColoredButton | None = None
-        self._has_dynamic_graph = False
-        self.speed_var = tk.StringVar(value="1x")
-        self._speed_combo: LabeledCombobox | None = None
-        self.plot_title_var = tk.StringVar(value="")
-        self.plot_info_var = tk.StringVar(value="Chargez un quartier pour demarrer la simulation.")
-        self._legend_frame: ttk.Frame | None = None
-        self._play_button: ColoredButton | None = None
 
         self._build_ui()
         self.place_var.trace_add("write", self._update_preview)
-        self.network_display_var.trace_add("write", self._update_preview)
         self.max_clients_var.trace_add("write", self._update_preview)
         self._update_preview()
-        self._apply_plot_mode()
 
     def _build_ui(self) -> None:
-        self.columnconfigure(0, weight=2)
-        self.columnconfigure(1, weight=5)
-        self.rowconfigure(0, weight=3)
+        self.columnconfigure(0, weight=1)
+        self.rowconfigure(0, weight=0)
         self.rowconfigure(1, weight=1)
 
         controls = ttk.LabelFrame(self, text="Parametres reconnaissance quartier", style="Card.TLabelframe")
         controls.grid(
             row=0,
             column=0,
-            sticky="new",
-            padx=(SPACING_LG, SPACING_MD),
+            sticky="ew",
+            padx=SPACING_LG,
             pady=(SPACING_LG, SPACING_MD),
         )
-        self._controls_frame = controls
         controls.columnconfigure(0, weight=1)
         controls.columnconfigure(1, weight=1)
         ttk.Label(
@@ -674,19 +686,9 @@ class QuartierTab(ttk.Frame):
             hint="Ex: Marais, Paris",
             tooltip="Adresse ou nom de quartier pour OSM.",
             validator=lambda raw: (len(raw.strip()) > 0, "obligatoire" if len(raw.strip()) > 0 else "Lieu requis"),
-            width=34,
+            width=72,
         )
-        self.place_field.grid(row=1, column=0, sticky="ew", padx=(0, SPACING_LG), pady=(0, SPACING_MD))
-
-        self.network_combo = LabeledCombobox(
-            controls,
-            label="Type de reseau",
-            variable=self.network_display_var,
-            values=list(NETWORK_TYPES.keys()),
-            tooltip="Mode de graphe OSM charge.",
-            width=28,
-        )
-        self.network_combo.grid(row=1, column=1, sticky="ew", pady=(0, SPACING_MD))
+        self.place_field.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(0, SPACING_MD))
 
         self.distance_field = LabeledEntry(
             controls,
@@ -726,10 +728,16 @@ class QuartierTab(ttk.Frame):
             pady=(0, SPACING_MD),
         )
 
-        ttk.Separator(controls, orient="horizontal").grid(row=5, column=0, columnspan=2, sticky="ew", pady=SPACING_MD)
+        ttk.Label(
+            controls,
+            text="Le visualizer s'ouvre en popup matplotlib. Reglez la vitesse du camion dans le slider du popup.",
+            style="Hint.TLabel",
+        ).grid(row=5, column=0, columnspan=2, sticky="w", pady=(0, SPACING_MD))
+
+        ttk.Separator(controls, orient="horizontal").grid(row=6, column=0, columnspan=2, sticky="ew", pady=SPACING_MD)
 
         action_row = ttk.Frame(controls, style="Surface.TFrame")
-        action_row.grid(row=6, column=0, columnspan=2, sticky="ew")
+        action_row.grid(row=7, column=0, columnspan=2, sticky="ew")
         action_row.columnconfigure(0, weight=1)
 
         self.indicator = RunningIndicator(action_row)
@@ -745,241 +753,23 @@ class QuartierTab(ttk.Frame):
         )
         self.run_button.grid(row=0, column=1, sticky="e")
 
-        plot_frame = ttk.LabelFrame(self, text="Visualisation dynamique OSM (imbriquee)", style="Card.TLabelframe")
-        plot_frame.grid(
-            row=0,
-            column=1,
-            sticky="nsew",
-            padx=(0, SPACING_LG),
-            pady=(SPACING_LG, SPACING_MD),
-        )
-        self._plot_frame = plot_frame
-        plot_frame.columnconfigure(0, weight=1)
-        # Row 2 (canvas) prend toute la hauteur disponible.
-        plot_frame.rowconfigure(2, weight=1)
-
-        plot_header = ttk.Frame(plot_frame, style="Surface.TFrame")
-        plot_header.grid(row=0, column=0, sticky="ew", padx=SPACING_MD, pady=(SPACING_SM, SPACING_XS))
-        plot_header.columnconfigure(0, weight=1)
-
-        self._speed_combo = LabeledCombobox(
-            plot_header,
-            label="Vitesse camion",
-            variable=self.speed_var,
-            values=["0.5x", "1x", "2x", "4x", "8x"],
-            tooltip="Accelere ou ralentit l'animation du camion.",
-            width=8,
-        )
-        self._speed_combo.grid(row=0, column=0, sticky="w")
-        self.speed_var.trace_add("write", self._on_speed_change)
-
-        self._play_button = ColoredButton(
-            plot_header,
-            text="▶ Demarrer",
-            command=self._toggle_play,
-            role="success",
-            width=14,
-            size="sm",
-        )
-        self._play_button.grid(row=0, column=1, sticky="e", padx=(0, SPACING_SM))
-
-        self._plot_mode_button = ColoredButton(
-            plot_header,
-            text="Plein ecran",
-            command=self._toggle_plot_mode,
-            role="secondary",
-            width=14,
-            size="sm",
-        )
-        self._plot_mode_button.grid(row=0, column=2, sticky="e")
-        self._set_plot_mode_button_ready(False)
-
-        # Ligne titre (centree, au-dessus du canvas).
-        title_label = ttk.Label(
-            plot_frame,
-            textvariable=self.plot_title_var,
-            style="BodyBold.TLabel",
-            justify="center",
-            anchor="center",
-        )
-        title_label.grid(row=1, column=0, sticky="ew", padx=SPACING_MD, pady=(0, SPACING_XS))
-
-        # Canvas matplotlib: prend tout l'espace vertical restant.
-        self._plot_container = ttk.Frame(plot_frame, style="Surface.TFrame")
-        self._plot_container.grid(row=2, column=0, sticky="nsew", padx=SPACING_SM, pady=0)
-        ttk.Label(
-            self._plot_container,
-            text="Aucune simulation affichee. Lancez l'analyse quartier pour afficher le visualizer dynamique ici.",
-            style="Hint.TLabel",
-        ).pack(anchor="center", padx=SPACING_MD, pady=SPACING_LG)
-
-        # Bande inferieure: info camion (gauche) + legende horizontale (droite).
-        bottom_bar = ttk.Frame(plot_frame, style="Surface.TFrame")
-        bottom_bar.grid(row=3, column=0, sticky="ew", padx=SPACING_MD, pady=(SPACING_XS, SPACING_SM))
-        bottom_bar.columnconfigure(0, weight=1)
-        bottom_bar.columnconfigure(1, weight=2)
-
-        info_label = ttk.Label(
-            bottom_bar,
-            textvariable=self.plot_info_var,
-            style="Body.TLabel",
-            justify="left",
-            anchor="w",
-        )
-        info_label.grid(row=0, column=0, sticky="w")
-
-        self._legend_frame = ttk.Frame(bottom_bar, style="Surface.TFrame")
-        self._legend_frame.grid(row=0, column=1, sticky="e")
-
         log_frame = ttk.LabelFrame(self, text="Journal reconnaissance", style="Card.TLabelframe")
         log_frame.grid(
             row=1,
             column=0,
-            columnspan=2,
             sticky="nsew",
             padx=SPACING_LG,
             pady=(0, SPACING_LG),
         )
-        self._log_frame = log_frame
         log_frame.rowconfigure(0, weight=1)
         log_frame.columnconfigure(0, weight=1)
 
         self.log_console = LogConsole(log_frame, height=10)
         self.log_console.grid(row=0, column=0, sticky="nsew")
 
-    def _toggle_plot_mode(self) -> None:
-        self._is_plot_fullscreen = not self._is_plot_fullscreen
-        self._apply_plot_mode()
-
-    def _set_plot_mode_button_ready(self, ready: bool) -> None:
-        if self._plot_mode_button is None:
-            return
-        self._has_dynamic_graph = ready
-        if ready:
-            base = PALETTE["error"]
-            hover = PALETTE["error_hover"]
-            active = PALETTE["error_hover"]
-        else:
-            base = PALETTE["primary"]
-            hover = PALETTE["primary_light"]
-            active = PALETTE["primary_light"]
-
-        self._plot_mode_button._base_color = base
-        self._plot_mode_button._hover_color = hover
-        self._plot_mode_button._active_color = active
-        self._plot_mode_button.configure(
-            bg=base,
-            activebackground=active,
-            fg=PALETTE["text_inverse"],
-            activeforeground=PALETTE["text_inverse"],
-        )
-
-    def _apply_plot_mode(self) -> None:
-        if (
-            self._controls_frame is None
-            or self._plot_frame is None
-            or self._log_frame is None
-            or self._plot_container is None
-        ):
-            return
-
-        if self._is_plot_fullscreen:
-            self.columnconfigure(0, weight=1)
-            self.columnconfigure(1, weight=1)
-            self.rowconfigure(0, weight=1)
-            self.rowconfigure(1, weight=0)
-
-            self._controls_frame.grid_remove()
-            self._log_frame.grid_remove()
-            self._plot_frame.grid_configure(
-                row=0,
-                column=0,
-                columnspan=2,
-                rowspan=2,
-                sticky="nsew",
-                padx=SPACING_LG,
-                pady=(SPACING_LG, SPACING_LG),
-            )
-            self._plot_frame.rowconfigure(1, weight=1)
-            self._plot_container.grid()
-            if self._plot_mode_button is not None:
-                self._plot_mode_button.configure(text="Mode mini")
-            return
-
-        self.columnconfigure(0, weight=2)
-        self.columnconfigure(1, weight=5)
-        self.rowconfigure(0, weight=3)
-        self.rowconfigure(1, weight=1)
-
-        self._controls_frame.grid()
-        self._log_frame.grid()
-        self._plot_frame.grid_configure(
-            row=0,
-            column=1,
-            columnspan=1,
-            rowspan=1,
-            sticky="nsew",
-            padx=(0, SPACING_LG),
-            pady=(SPACING_LG, SPACING_MD),
-        )
-        self._plot_frame.rowconfigure(1, weight=0)
-        self._plot_container.grid_remove()
-        if self._plot_mode_button is not None:
-            self._plot_mode_button.configure(text="Plein ecran")
-
-    _SPEED_MULTIPLIERS = {"0.5x": 0.5, "1x": 1.0, "2x": 2.0, "4x": 4.0, "8x": 8.0}
-
-    def _current_speed_multiplier(self) -> float:
-        return self._SPEED_MULTIPLIERS.get(self.speed_var.get(), 1.0)
-
-    def _on_speed_change(self, *_: object) -> None:
-        multiplier = self._current_speed_multiplier()
-        if not self._sessions:
-            return
-        session = self._sessions[-1]
-        session.set_speed(multiplier)
-
-    def _toggle_play(self) -> None:
-        if not self._sessions:
-            return
-        self._sessions[-1].toggle()
-
-    def _on_title_update(self, title: str) -> None:
-        self.plot_title_var.set(title)
-
-    def _on_info_update(self, info: str) -> None:
-        self.plot_info_var.set(info)
-
-    def _on_state_change(self, state: str) -> None:
-        if self._play_button is None:
-            return
-        if state == "playing":
-            self._play_button.configure(text="⏸ Pause")
-        else:
-            self._play_button.configure(text="▶ Demarrer")
-
-    def _on_legend_update(self, items: list[tuple[str, str, str]]) -> None:
-        frame = self._legend_frame
-        if frame is None:
-            return
-        for child in frame.winfo_children():
-            child.destroy()
-        for idx, (label, color, _linestyle) in enumerate(items):
-            swatch = tk.Frame(frame, width=14, height=14, bg=color, bd=0, highlightthickness=0)
-            swatch.grid(row=0, column=idx * 2, padx=(SPACING_SM, 0), pady=0)
-            swatch.grid_propagate(False)
-            ttk.Label(frame, text=label, style="Hint.TLabel").grid(
-                row=0,
-                column=idx * 2 + 1,
-                padx=(SPACING_XS, 0),
-                sticky="w",
-            )
-
     def _update_preview(self, *_: object) -> None:
-        label = self.network_display_var.get()
-        network_type = NETWORK_TYPES.get(label, "drive")
         self.preview_var.set(
-            f"Apercu: {self.place_var.get().strip() or '-'} | type={network_type} | clients={self.max_clients_var.get().strip() or '?'}"
+            f"Apercu: {self.place_var.get().strip() or '-'} | mode=drive | clients={self.max_clients_var.get().strip() or '?'}"
         )
 
     def _set_running(self, running: bool, *, success: bool = True, message: str = "") -> None:
@@ -1011,7 +801,6 @@ class QuartierTab(ttk.Frame):
             "place": self.place_var.get().strip(),
             "distance_raw": self.distance_var.get(),
             "max_clients_raw": self.max_clients_var.get(),
-            "network_display": self.network_display_var.get(),
             "export_format": self.export_format_var.get(),
         }
 
@@ -1029,7 +818,7 @@ class QuartierTab(ttk.Frame):
             place = str(job["place"])
             distance = parse_positive_int(str(job["distance_raw"]), field_name="Distance")
             max_solver_clients = parse_positive_int(str(job["max_clients_raw"]), field_name="Clients dynamiques")
-            network_type = NETWORK_TYPES.get(str(job["network_display"]), "drive")
+            network_type = "drive"
             export_format = str(job["export_format"])
 
             result = run_quartier_service(
@@ -1047,24 +836,12 @@ class QuartierTab(ttk.Frame):
 
     def _on_quartier_success(self, result) -> None:
         try:
-            self._on_state_change("paused")
-            self.plot_info_var.set("Appuyez sur Demarrer pour lancer la simulation.")
-            session = build_quartier_dynamic_session(
-                result,
-                title_callback=self._on_title_update,
-                info_callback=self._on_info_update,
-                legend_callback=self._on_legend_update,
-                state_callback=self._on_state_change,
-            )
-            session.set_speed(self._current_speed_multiplier())
+            session = build_quartier_dynamic_session(result)
             self._sessions.append(session)
-            figure = session.fig
         except Exception as exc:
             details = traceback.format_exc(limit=10)
             self._on_quartier_failure(str(exc), details)
             return
-
-        self._set_running(False, success=True, message="Simulation quartier active")
 
         if self.log_console is not None:
             self.log_console.log("success", "Quartier charge: simulation dynamique active sur fond OSM")
@@ -1089,31 +866,38 @@ class QuartierTab(ttk.Frame):
                 if key in result.dynamic_instance_summary:
                     self.log_console.log("plain", f"  - {key}: {result.dynamic_instance_summary[key]}")
 
-        self._render_figure(figure)
-        self._set_plot_mode_button_ready(True)
+        popup_ready = {"done": False}
 
-    def _render_figure(self, figure) -> None:
-        if self._plot_container is None:
-            return
+        def _mark_ready(_: object | None = None) -> None:
+            if popup_ready["done"]:
+                return
+            popup_ready["done"] = True
+            try:
+                session.fig.canvas.mpl_disconnect(hook_id)
+            except Exception:
+                pass
+            self._set_running(False, success=True, message="Simulation quartier active")
 
-        for child in self._plot_container.winfo_children():
-            child.destroy()
+        hook_id = session.fig.canvas.mpl_connect("draw_event", _mark_ready)
 
-        if self._current_figure is not None:
-            plt.close(self._current_figure)
-        self._current_figure = figure
+        def _fallback_ready() -> None:
+            if popup_ready["done"]:
+                return
+            try:
+                session.fig.canvas.mpl_disconnect(hook_id)
+            except Exception:
+                pass
+            _mark_ready()
 
-        self._figure_canvas = FigureCanvasTkAgg(figure, master=self._plot_container)
-        self._figure_canvas.draw()
-        self._figure_canvas.get_tk_widget().pack(fill="both", expand=True)
+        self.after(2500, _fallback_ready)
+        plt.show(block=False)
+        session.fig.canvas.draw_idle()
 
     def _on_quartier_failure(self, error_message: str, details: str) -> None:
         self._set_running(False, success=False, message="Erreur reconnaissance")
         if self.log_console is not None:
             self.log_console.log("error", error_message)
             self.log_console.log("plain", details)
-        if self._current_figure is None:
-            self._set_plot_mode_button_ready(False)
         messagebox.showerror("Reconnaissance quartier", error_message)
 
 

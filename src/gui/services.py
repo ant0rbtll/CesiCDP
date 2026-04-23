@@ -120,8 +120,18 @@ class GenerationServiceResult:
 def generate_and_build_visualizer(config: GraphGenerationConfig) -> GenerationServiceResult:
     generator = GraphGenerator(config)
     instance = generator.generate()
-    visualizer = GraphVisualizer(instance, generator)
-    session = visualizer.show_dynamic_graph()
+    visualizer = GraphVisualizer(
+        instance,
+        generator,
+        show_edge_labels=False,
+        show_node_labels=False,
+        show_grid=False,
+    )
+    session = visualizer.show_dynamic_graph(
+        size=(16.0, 10.8),
+        external_controls=False,
+        show_legend=True,
+    )
     return GenerationServiceResult(summary=instance.summary(), session=session)
 
 
@@ -155,11 +165,11 @@ def build_quartier_dynamic_session(
         show_node_labels=show_node_labels,
         show_grid=False,
     )
-    # Titre, info et legende seront affiches dans des widgets tk externes
-    # pour liberer toute la figure au canvas de la carte.
+    # Popup natif matplotlib: taille initiale large pour maximiser la zone graphe.
     return visualizer.show_dynamic_graph(
-        size=(12.0, 10.5),
-        external_controls=True,
+        size=(16.0, 10.8),
+        external_controls=False,
+        show_legend=True,
         title_callback=title_callback,
         info_callback=info_callback,
         legend_callback=legend_callback,
