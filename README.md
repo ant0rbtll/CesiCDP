@@ -24,6 +24,37 @@ Le projet construit une instance VRP-CDR en plusieurs couches :
 
 Les notebooks sont volontairement explicatifs : ils ne servent pas seulement a executer le code, mais a justifier les choix de modelisation, les invariants, les complexites et les compromis algorithmiques. Les notebooks principaux contiennent des references quand une notion externe est mobilisee.
 
+## Installation
+
+```bash
+python3 -m pip install -r requirements.txt
+```
+
+Si `pip` retourne `externally-managed-environment` (Python Homebrew), utiliser soit un venv, soit :
+
+```bash
+python3 -m pip install --user --break-system-packages -r requirements.txt
+```
+
+## Lancer la WebUI Dash
+
+Depuis la racine du depot, creer et activer un environnement virtuel :
+
+```bash
+python3 -m venv .venv_dash
+source .venv_dash/bin/activate   # Windows : .venv_dash\Scripts\activate
+```
+
+Installer les dependances et lancer :
+
+```bash
+python3 -m pip install --upgrade pip
+python3 -m pip install -r requirements.txt
+python3 dash_app/app.py
+```
+
+Puis ouvrir `http://127.0.0.1:8050` dans un navigateur. Pour quitter : `Ctrl+C`.
+
 ## Parcours de lecture recommande
 
 Pour une lecture complete, suivre cet ordre :
@@ -100,4 +131,3 @@ Chaque notebook documente un fichier source correspondant :
 | `src/cesipath/visualization.py` | `notebooks/visualization.ipynb` |
 | `src/cesipath/__init__.py` | `notebooks/package_exports.ipynb` |
 | `src/cesipath/algorithms/*.py` | `notebooks/algorithms/*.ipynb` |
-

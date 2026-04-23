@@ -1,56 +1,90 @@
 # CLAUDE.md
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+This file provides guidance to Claude Code when working with this repository.
 
-## Commandes
+## Commandes rapides
 
-Le package n'est pas installable (pas de `pyproject.toml`). Importer depuis la racine nécessite :
+Le package n est pas installable (pas de `pyproject.toml`).
+Toujours importer depuis la racine avec:
 
 ```python
-import sys; sys.path.insert(0, "src")
+import sys
+sys.path.insert(0, "src")
 from cesipath import ...
 ```
 
-- **Exécution de scripts** : `python3` (le binaire `python` n'est pas aliasé).
-- **Visualisation interactive hors notebook** : `python3 main_visualization.py`.
-- **Pas de suite de tests** formelle — la validation passe par des smoke tests ad-hoc et par les notebooks `notebooks/*.ipynb`, un par module métier.
-- **Pas de linter configuré**.
+- Executer avec `python3` (jamais `python`).
+- Web UI Dash: `python3 dash_app/app.py`
+- GUI tkinter legacy: `python3 main_gui.py`
+- Visualisation hors notebook: `python3 main_visualization.py`
 
-## Architecture
+## Architecture du projet
 
-Le projet implémente **VRP-CDR** (Vehicle Routing Problem with Capacity, edge Constraints, Dynamic routing), formalisé dans `livrable_modelisation_1.ipynb`. Deux couches :
+### Domaine (source de verite)
 
-### Domaine (`src/cesipath/`, hors `algorithms/`)
+Toute la logique metier est dans `src/cesipath/`:
 
-Le générateur produit des graphes réalistes, la fermeture métrique les rend exploitables par les solveurs, et le simulateur dynamique fait évoluer les coûts/statuts des arêtes pendant la résolution.
+- generation d instance VRP
+- fermeture metrique et plus courts chemins
+- dynamique de couts / statuts d aretes
+- construction `SolverInput`
+- solveurs (`grasp`, `tabu_search`, `simulated_annealing`, `genetic`)
+- benchmark et visualisation
 
-- **`graph_generator.py`** — Produit une `GraphInstance` filtrée par un profil de densité auto selon la taille. Les arêtes portent un `EdgeStatus` (`FREE` / `SURCHARGED` / `FORBIDDEN`).
-- **`metric_closure.py`** — Complète le graphe résiduel par Dijkstra. Expose `completed_costs` (matrice Δ-TSP respectant l'inégalité triangulaire) et `completed_paths` (chemins).
-- **`dynamic_network.py` + `dynamic_costs.py`** — Simule l'évolution des coûts avec gaussienne à retour vers la moyenne, plancher = coût statique, plafond = `dynamic_max_multiplier`. Des arêtes peuvent passer `FORBIDDEN` et redevenir `FREE` sous contraintes de connexité et densité.
-- **`solver_input.py`** — Contrat unique `SolverInput` (cost_matrix, depot, demands, capacity, shortest_paths, source, dynamic_step). `build_static_solver_input` et `build_dynamic_solver_input` produisent la même structure depuis un état statique ou un `DynamicGraphSnapshot`. **Tous les algos consomment `SolverInput`, pas `GraphInstance`** — ne jamais lire la structure de graphe brute depuis un solveur.
-- **`validators.py`** — `InstanceValidator` (validité structurelle de l'instance) et `DynamicStateValidator` (invariants sur snapshots). Ne valide **pas** les solutions VRP.
+Ne pas casser les contrats de `SolverInput` et `VRPSolution`.
 
-### Métaheuristiques (`src/cesipath/algorithms/`)
+### Web UI Dash (`dash_app/`)
 
-Quatre algorithmes partagent un même jeu de primitives de voisinage. **Toujours mutualiser dans `neighborhood.py` plutôt que dupliquer dans chaque algo.**
+- `app.py`: point d entree Dash, insertion de `src` dans `sys.path`, initialisation app.
+- `layout.py`: tabs Benchmark / Generation / Quartier + `dcc.Store`.
+- `callbacks/benchmark.py`: lancement benchmark, polling statut, rendu 3 graphes Plotly.
+- `callbacks/generation.py`: generation d instance et rendu du graphe.
+- `callbacks/quartier.py`: chargement OSM, simulation VRP, animation camion.
+- `components/log_console.py`: queue thread-safe par onglet + rendu logs.
+- `components/map_view.py`: rendu carte OSM en graphe mathematique Plotly.
+- `assets/style.css`: design system CSS.
+- `assets/quartier_speed.js`: controle vitesse/start/pause en clientside JS.
 
-- **`neighborhood.py`** — Fondation : `VRPSolution` (dataclass), opérateurs déterministes best-improvement (`relocate_inter`, `swap_inter`, `two_opt`), `local_search` qui les compose jusqu'à stabilité, et versions aléatoires (`random_*`) utilisées par SA. `_prune_empty_routes` est `_private` mais réutilisé par `tabu_search`.
-- **`grasp.py`** — GRASP = construction gloutonne randomisée (RCL paramétrée par `rcl_alpha`) + `local_search`, sur `max_iterations` restarts.
-- **`simulated_annealing.py`** — Metropolis + refroidissement géométrique, mouvements via `random_neighbor`, passe finale `local_search` (flag `final_local_search`) pour équité vs GRASP.
-- **`tabu_search.py`** — Balayage complet du voisinage relocate+swap, mémoire courte par attribut (client déplacé, paire échangée), aspiration, polissage final `local_search`.
-- **`genetic.py`** — Représentation **giant-tour** (permutation) décodée par **Split de Prins** (DP O(n²)). OX crossover, mutation swap/reverse, sélection tournoi, élitisme, option mémétique qui applique `local_search` à chaque enfant.
-- **`benchmark.py`** — Harnais : `run_benchmark(sizes, seeds, algos, algo_kwargs)` produit une liste de dicts. `plot_benchmark_quality`, `plot_benchmark_gap` (écart % au meilleur par instance), `plot_benchmark_runtime`. `save_benchmark_figures` sauvegarde les 3 PNG (`benchmark_{quality,gap,runtime}_N.png`) avec index auto-incrémenté propre à ce préfixe (indépendant de `save_solution_plot` et `save_dynamic_benchmark_figures`).
-- **`visualization.py`** — `plot_solution` (routes colorées + graphe résiduel en fond) et `save_solution_plot` (fichiers `png_result_N.png` dans `DEFAULT_IMAGE_DIR = algorithms/image/`).
+### Metaheuristiques (`src/cesipath/algorithms/`)
 
-### Contraintes transverses
+Quatre algorithmes partagent un meme jeu de primitives de voisinage. Toujours mutualiser dans `neighborhood.py` plutot que dupliquer dans chaque algo.
 
-- **Commentaires et docstrings en français sans accents** (style historique du repo).
-- **Figures** : `algorithms/image/` est dans `.gitignore` (`*.png`). Ne pas commiter de PNG.
-- **`.pyc`** : déjà ignorés et untracked — ne jamais re-commiter par inadvertance.
-- **Reproductibilité** : tous les algos acceptent `seed`. Les tests manuels vérifient que deux runs même seed donnent le même coût.
+- **`neighborhood.py`** — Fondation : `VRPSolution` (dataclass), operateurs deterministes best-improvement (`relocate_inter`, `swap_inter`, `two_opt`), `local_search` qui les compose jusqu a stabilite, et versions aleatoires (`random_*`) utilisees par SA. `_prune_empty_routes` est `_private` mais reutilise par `tabu_search`.
+- **`grasp.py`** — GRASP = construction gloutonne randomisee (RCL parametree par `rcl_alpha`) + `local_search`, sur `max_iterations` restarts.
+- **`simulated_annealing.py`** — Metropolis + refroidissement geometrique, mouvements via `random_neighbor`, passe finale `local_search` (flag `final_local_search`) pour equite vs GRASP.
+- **`tabu_search.py`** — Balayage complet du voisinage relocate+swap, memoire courte par attribut (client deplace, paire echangee), aspiration, polissage final `local_search`.
+- **`genetic.py`** — Representation giant-tour (permutation) decodee par Split de Prins (DP O(n^2)). OX crossover, mutation swap/reverse, selection tournoi, elitisme, option memetique qui applique `local_search` a chaque enfant.
+- **`benchmark.py`** — Harnais : `run_benchmark(sizes, seeds, algos, algo_kwargs)` produit une liste de dicts. `plot_benchmark_quality`, `plot_benchmark_gap` (ecart % au meilleur par instance), `plot_benchmark_runtime`. `save_benchmark_figures` sauvegarde les 3 PNG avec index auto-incremente.
+- **`visualization.py`** — `plot_solution` (routes colorees + graphe residuel en fond) et `save_solution_plot` (fichiers `png_result_N.png` dans `DEFAULT_IMAGE_DIR = algorithms/image/`).
 
-## Git
+## Etat, sessions et concurrence
 
-- Branche principale : **`main`** (ne PAS utiliser `PROSIT1` même si `git status` le suggère).
-- Style de messages : `feat : X`, `fix : X`, `refacto` (lowercase, espace autour du `:`).
-- PR target : `main`.
+- L app tourne avec `app.run(debug=True, port=8050, processes=1, threaded=True)`.
+- Les objets non serialisables vont dans `SESSION_CACHE` (global serveur), indexes par `session_id`.
+- Les `dcc.Store` ne contiennent que de l etat serialisable (status, session_id, params).
+- Les operations longues tournent dans des `threading.Thread(..., daemon=True)`.
+- Les logs temps reel passent par `LOG_STORE` (`queue.Queue`) et des callbacks `dcc.Interval`.
+
+## Onglet Quartier (etat actuel)
+
+- Chargement OSM via worker dedie, stockage en cache serveur (`osm_graph`, `osm_nodes`, `osm_edges`, etc.).
+- Simulation sur graphe OSM avec couts dynamiques et chemins reels Dijkstra.
+- Animation Plotly par frames avec sprite camion (`image/camionD.png`, `image/camionG.png`).
+- Vitesse et commandes Start/Pause pilotes en JS (`assets/quartier_speed.js`).
+
+## Conventions de developpement
+
+- Commentaires et docstrings en francais sans accents.
+- Reproductibilite: toujours passer `seed` aux algorithmes.
+- Pour la migration UI, ne pas modifier la logique metier dans `src/cesipath/`.
+- Conserver `main_gui.py` fonctionnel en parallele.
+- Les PNG auto-generes ne doivent pas etre commits.
+- Branche principale : `main`. Style de messages : `feat : X`, `fix : X`, `refacto`.
+
+## Validation minimale
+
+Avant livraison:
+
+1. `python3 -m compileall dash_app`
+2. smoke test manuel de `python3 dash_app/app.py`
+3. verifier logs et callbacks sans erreur JS console sur le flux teste

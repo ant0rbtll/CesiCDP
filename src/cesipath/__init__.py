@@ -49,6 +49,12 @@ from .models import (
 from .solver_input import SolverInput, build_dynamic_solver_input, build_static_solver_input
 from .validators import DynamicStateValidator, InstanceValidator
 
+try:
+    from .quartier_graph import QuartierGraph, analyze_chemin
+except ModuleNotFoundError:
+    QuartierGraph = None  # type: ignore[assignment]
+    analyze_chemin = None  # type: ignore[assignment]
+
 __all__ = [
     "DEFAULT_DYNAMIC_SIGMA",
     "DynamicExecution",
@@ -94,3 +100,6 @@ __all__ = [
     "refresh_dynamic_edge_costs",
     "sample_dynamic_edge_cost",
 ]
+
+if QuartierGraph is not None:
+    __all__.extend(["QuartierGraph", "analyze_chemin"])

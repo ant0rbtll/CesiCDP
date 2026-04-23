@@ -8,6 +8,17 @@ __pycache__/
 .venv/
 venv/
 env/
+.venv_dash/
+.venv_dash_test/
+.venv*/
+venv*/
+env*/
+*/.venv/
+*/venv/
+*/env/
+*/.venv*/
+*/venv*/
+*/env*/
 
 # Jupyter
 .ipynb_checkpoints/
@@ -20,8 +31,17 @@ env/
 .DS_Store
 Thumbs.db
 
-# Image
+# Images generees
 src/cesipath/algorithms/image/*.png
+image/benchmark_quality_*.png
+image/benchmark_gap_*.png
+image/benchmark_runtime_*.png
 
 # Benchmark outputs
 benchmark_results*/
+
+# Cache Dash
+cache/dash_diskcache/
+
+# Artefacts locaux
+testlog.py
