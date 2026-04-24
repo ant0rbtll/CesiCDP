@@ -1,0 +1,5 @@
+status,mode,profile,intensity,size,density,forbidden_rate,surcharge_rate,dynamic_sigma,dynamic_forbid_probability,instance_seed,sim_seed,algo,strategy,planned_cost,realized_cost,solver_time,wall_time,reoptimizations,steps,actual_base_density,actual_residual_density,residual_average_degree,minimum_route_count,error
+ok,dynamic,smoke,quick,8,0.35,0.1,0.2,0.12,0.03,1,101,grasp,fixed,667.75,718.98,0.0008,0.011147,1,8,0.321429,0.321429,2.25,1,
+ok,dynamic,smoke,quick,8,0.35,0.1,0.2,0.12,0.03,1,101,grasp,reopt,667.75,718.98,0.0008,0.001602,1,8,0.321429,0.321429,2.25,1,
+ok,dynamic,smoke,quick,8,0.35,0.1,0.2,0.12,0.03,1,101,sa,fixed,667.75,895.19,0.0016,0.002523,1,8,0.321429,0.321429,2.25,1,
+ok,dynamic,smoke,quick,8,0.35,0.1,0.2,0.12,0.03,1,101,sa,reopt,667.75,718.98,0.0015,0.00237,1,8,0.321429,0.321429,2.25,1,

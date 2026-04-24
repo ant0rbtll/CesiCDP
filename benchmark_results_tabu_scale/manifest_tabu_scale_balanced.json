@@ -1,0 +1,56 @@
+{
+  "created_at": "2026-04-23 22:20:28",
+  "profile_name": "tabu_scale",
+  "mode": "both",
+  "intensity": "balanced",
+  "workers": 20,
+  "algos": [
+    "tabu"
+  ],
+  "strategies": [
+    "fixed"
+  ],
+  "reopt_algos": [
+    "tabu"
+  ],
+  "profile": {
+    "sizes": [
+      20,
+      40,
+      60,
+      80,
+      100,
+      120,
+      140,
+      160,
+      180,
+      200
+    ],
+    "densities": [
+      0.25
+    ],
+    "forbidden_rates": [
+      0.05
+    ],
+    "surcharge_rates": [
+      0.2
+    ],
+    "instance_seeds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "sim_seeds": [
+      101,
+      102
+    ],
+    "dynamic_sigmas": [
+      0.12
+    ],
+    "dynamic_forbid_probabilities": [
+      0.03
+    ]
+  }
+}

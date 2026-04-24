@@ -1,0 +1,55 @@
+{
+  "created_at": "2026-04-23 13:00:16",
+  "profile_name": "calibration",
+  "mode": "both",
+  "intensity": "quick",
+  "workers": 18,
+  "algos": [
+    "grasp",
+    "sa",
+    "tabu",
+    "ga"
+  ],
+  "strategies": [
+    "fixed",
+    "reopt"
+  ],
+  "profile": {
+    "sizes": [
+      10,
+      20,
+      40,
+      60
+    ],
+    "densities": [
+      0.25,
+      0.45,
+      0.65
+    ],
+    "forbidden_rates": [
+      0.05,
+      0.15
+    ],
+    "surcharge_rates": [
+      0.2
+    ],
+    "instance_seeds": [
+      1,
+      2,
+      3,
+      4,
+      5
+    ],
+    "sim_seeds": [
+      101,
+      102,
+      103
+    ],
+    "dynamic_sigmas": [
+      0.12
+    ],
+    "dynamic_forbid_probabilities": [
+      0.03
+    ]
+  }
+}

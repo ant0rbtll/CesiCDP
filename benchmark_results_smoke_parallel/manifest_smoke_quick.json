@@ -1,0 +1,42 @@
+{
+  "created_at": "2026-04-23 12:57:26",
+  "profile_name": "smoke",
+  "mode": "static",
+  "intensity": "quick",
+  "workers": 2,
+  "algos": [
+    "grasp",
+    "sa"
+  ],
+  "strategies": [
+    "fixed",
+    "reopt"
+  ],
+  "profile": {
+    "sizes": [
+      8
+    ],
+    "densities": [
+      0.35
+    ],
+    "forbidden_rates": [
+      0.1
+    ],
+    "surcharge_rates": [
+      0.2
+    ],
+    "instance_seeds": [
+      2
+    ],
+    "sim_seeds": [
+      101,
+      102
+    ],
+    "dynamic_sigmas": [
+      0.12
+    ],
+    "dynamic_forbid_probabilities": [
+      0.03
+    ]
+  }
+}

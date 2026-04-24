@@ -1,0 +1,2 @@
+status,mode,profile,intensity,size,density,forbidden_rate,surcharge_rate,dynamic_sigma,dynamic_forbid_probability,instance_seed,sim_seed,algo,strategy,planned_cost,realized_cost,solver_time,dijkstra_time,wall_time,reoptimizations,depot_replans,reactive_repairs,steps,actual_base_density,actual_residual_density,residual_average_degree,minimum_route_count,error
+ok,dynamic,dijkstra,balanced,40,0.25,0.05,0.2,0.12,0.03,1,101,grasp,fixed,2359.17,2784.11,0.3048,0.0828,0.757262,1,0,0,49,0.25,0.238462,9.3,10,

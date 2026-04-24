@@ -31,15 +31,6 @@ env*/
 .DS_Store
 Thumbs.db
 
-# Images generees
-src/cesipath/algorithms/image/*.png
-image/benchmark_quality_*.png
-image/benchmark_gap_*.png
-image/benchmark_runtime_*.png
-
-# Benchmark outputs
-benchmark_results*/
-
 # Cache
 cache/
 
